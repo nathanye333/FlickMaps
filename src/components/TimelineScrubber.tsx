@@ -1,6 +1,9 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, PanResponder, Dimensions } from 'react-native';
 import { Photo } from '../App';
 import { TimelineFilter } from './MapView';
+
+const { width } = Dimensions.get('window');
 
 interface TimelineScrubberProps {
   photos: Photo[];
@@ -10,10 +13,11 @@ interface TimelineScrubberProps {
 }
 
 export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }: TimelineScrubberProps) {
-  const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
-  const [startX, setStartX] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<View>(null);
+  const dragStartOffset = useRef(0);
+  const dragOffsetRef = useRef(0);
+  const intervalInfoRef = useRef({ pixelsPerUnit: 80 });
 
   // Calculate interval size based on filter - memoized to prevent infinite loops
   const intervalInfo = useMemo(() => {
@@ -69,63 +73,40 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
     const currentDate = getCurrentDate();
     onTimeChangeRef.current(currentDate);
   }, [getCurrentDate]);
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsDragging(true);
-    setStartX(e.clientX);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.stopPropagation();
-    setIsDragging(true);
-    setStartX(e.touches[0].clientX);
-  };
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDragging) {
-      const deltaX = e.clientX - startX;
-      const newOffset = dragOffset + deltaX;
-      // Clamp to prevent going into the future (offset < 0)
-      setDragOffset(Math.max(newOffset, 0));
-      setStartX(e.clientX);
-    }
-  }, [isDragging, startX, dragOffset]);
-
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (isDragging) {
-      e.preventDefault();
-      const deltaX = e.touches[0].clientX - startX;
-      const newOffset = dragOffset + deltaX;
-      // Clamp to prevent going into the future (offset < 0)
-      setDragOffset(Math.max(newOffset, 0));
-      setStartX(e.touches[0].clientX);
-    }
-  }, [isDragging, startX, dragOffset]);
-
-  const handleMouseUp = useCallback(() => {
-    if (isDragging) {
-      // Snap to nearest interval when releasing
-      const snapOffset = Math.round(dragOffset / intervalInfo.pixelsPerUnit) * intervalInfo.pixelsPerUnit;
-      setDragOffset(Math.max(snapOffset, 0));
-    }
-    setIsDragging(false);
-  }, [isDragging, dragOffset, intervalInfo.pixelsPerUnit]);
-
+  
+  // Update refs when values change
   useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.addEventListener('touchmove', handleTouchMove, { passive: false });
-      document.addEventListener('touchend', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.removeEventListener('touchmove', handleTouchMove);
-        document.removeEventListener('touchend', handleMouseUp);
-      };
-    }
-  }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove]);
+    dragOffsetRef.current = dragOffset;
+    dragStartOffset.current = dragOffset;
+  }, [dragOffset]);
+  
+  useEffect(() => {
+    intervalInfoRef.current = intervalInfo;
+  }, [intervalInfo]);
+  
+  // Create pan responder with refs to avoid stale closures
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        // Store the starting offset when drag begins
+        dragStartOffset.current = dragOffsetRef.current;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        const deltaX = gestureState.dx;
+        const newOffset = dragStartOffset.current + deltaX;
+        // Clamp to prevent going into the future (offset < 0)
+        setDragOffset(Math.max(newOffset, 0));
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        // Snap to nearest interval when releasing
+        const currentOffset = dragStartOffset.current + gestureState.dx;
+        const snapOffset = Math.round(currentOffset / intervalInfoRef.current.pixelsPerUnit) * intervalInfoRef.current.pixelsPerUnit;
+        setDragOffset(Math.max(snapOffset, 0));
+      },
+    })
+  ).current;
 
   // Format date for notches
   const formatNotchDate = (date: Date) => {
@@ -178,63 +159,117 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
   const dateNotches = getDateNotches();
   
   // Calculate snapped offset for rendering
-  const snappedOffset = isDragging ? dragOffset : Math.round(dragOffset / intervalInfo.pixelsPerUnit) * intervalInfo.pixelsPerUnit;
+  const snappedOffset = Math.round(dragOffset / intervalInfo.pixelsPerUnit) * intervalInfo.pixelsPerUnit;
+  const currentInterval = -Math.round(snappedOffset / intervalInfo.pixelsPerUnit);
 
   return (
-    <div className="w-full bg-transparent pointer-events-auto" ref={containerRef}>
-      <div className="relative overflow-hidden">
+    <View style={styles.container} ref={containerRef} {...panResponder.panHandlers}>
+      <View style={styles.trackContainer}>
         {/* Timeline Track */}
-        <div
-          onMouseDown={handleMouseDown}
-          onTouchStart={handleTouchStart}
-          className={`relative h-16 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-        >
-          {/* Background Track - Number Line - positioned lower */}
-          <div className="absolute bottom-3 left-0 right-0 h-0.5 bg-gray-800/30" />
+        <View style={styles.track}>
+          {/* Background Track - Number Line */}
+          <View style={styles.trackLine} />
           
           {/* Scrollable dates container */}
-          <div 
-            className="absolute bottom-0 left-1/2 h-full pointer-events-none"
-            style={{ 
-              transform: `translateX(${snappedOffset}px)`,
-              transition: isDragging ? 'none' : 'transform 200ms ease-out'
-            }}
+          <View 
+            style={[
+              styles.datesContainer,
+              { 
+                transform: [{ translateX: snappedOffset }],
+              }
+            ]}
           >
             {/* Date Notches */}
             {dateNotches.map((notch) => {
               const position = notch.offset * intervalInfo.pixelsPerUnit;
-              const isCenter = notch.offset === -Math.round(snappedOffset / intervalInfo.pixelsPerUnit);
+              const isCenter = notch.offset === currentInterval;
               
               return (
-                <div
+                <View
                   key={`${notch.offset}-${notch.date.getTime()}`}
-                  className="absolute bottom-3 -translate-x-1/2"
-                  style={{ left: `${position}px` }}
+                  style={[
+                    styles.notchContainer,
+                    { left: position }
+                  ]}
                 >
                   {/* Date label - ABOVE timeline */}
-                  <div 
-                    className={`text-[10px] whitespace-nowrap -translate-x-1/2 relative left-1/2 mb-1.5 transition-all ${
-                      isCenter
-                        ? 'text-cyan-600 font-bold'
-                        : 'text-gray-800 font-medium'
-                    }`}
+                  <Text 
+                    style={[
+                      styles.dateLabel,
+                      isCenter && styles.dateLabelActive
+                    ]}
                   >
                     {notch.label}
-                  </div>
+                  </Text>
                   {/* Notch line */}
-                  <div 
-                    className={`w-px transition-all ${
-                      isCenter 
-                        ? 'h-3.5 bg-cyan-500' 
-                        : 'h-2.5 bg-gray-800/40'
-                    }`} 
+                  <View 
+                    style={[
+                      styles.notchLine,
+                      isCenter && styles.notchLineActive
+                    ]} 
                   />
-                </div>
+                </View>
               );
             })}
-          </div>
-        </div>
-      </div>
-    </div>
+          </View>
+        </View>
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+    backgroundColor: 'transparent',
+  },
+  trackContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  track: {
+    position: 'relative',
+    height: 64,
+  },
+  trackLine: {
+    position: 'absolute',
+    bottom: 12,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  datesContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: width / 2,
+    height: '100%',
+  },
+  notchContainer: {
+    position: 'absolute',
+    bottom: 12,
+    transform: [{ translateX: -0.5 }],
+  },
+  dateLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#1f2937',
+    marginBottom: 6,
+    textAlign: 'center',
+    minWidth: 50,
+  },
+  dateLabelActive: {
+    color: '#0891b2',
+    fontWeight: 'bold',
+  },
+  notchLine: {
+    width: 1,
+    height: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  notchLineActive: {
+    height: 14,
+    backgroundColor: '#06b6d4',
+    width: 2,
+  },
+});

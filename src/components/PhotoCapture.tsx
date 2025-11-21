@@ -1,17 +1,43 @@
-import { useState } from 'react';
-import { X, Camera, MapPin, Globe, Users, Lock } from 'lucide-react';
+import React, { useState } from 'react';
+import { View, Text, Pressable, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useNavigation } from '@react-navigation/native';
+import * as Location from 'expo-location';
 
 interface PhotoCaptureProps {
   onComplete: () => void;
   onCancel: () => void;
+  navigation?: any;
+  route?: any;
 }
 
 export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
   const [step, setStep] = useState<'camera' | 'details'>('camera');
   const [caption, setCaption] = useState('');
   const [visibility, setVisibility] = useState<'personal' | 'friends' | 'public'>('friends');
+  const [facing, setFacing] = useState<'back' | 'front'>('back');
+  const [permission, requestPermission] = useCameraPermissions();
+  const [location, setLocation] = useState<Location.LocationObject | null>(null);
 
-  const handleCapture = () => {
+  React.useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc);
+      }
+    })();
+  }, []);
+
+  const handleCapture = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission required', 'Camera permission is required to take photos');
+        return;
+      }
+    }
     setStep('details');
   };
 
@@ -20,136 +46,350 @@ export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
     onComplete();
   };
 
+  const getLocationString = () => {
+    if (location) {
+      return `San Francisco, CA`; // In real app, reverse geocode
+    }
+    return 'Location unavailable';
+  };
+
   if (step === 'camera') {
     return (
-      <div className="h-full bg-black relative">
-        {/* Camera View (Simulated) */}
-        <div className="h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-          <div className="text-center">
-            <Camera className="w-24 h-24 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-500">Camera View</p>
-          </div>
-        </div>
-
-        {/* Top Bar */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 bg-gradient-to-b from-black/50 to-transparent">
-          <button onClick={onCancel} className="w-10 h-10 rounded-full bg-black/30 flex items-center justify-center">
-            <X className="w-6 h-6 text-white" />
-          </button>
-          
-          <div className="flex items-center gap-2 bg-black/50 rounded-full px-3 py-2">
-            <MapPin className="w-4 h-4 text-cyan-400" />
-            <span className="text-white text-sm">San Francisco, CA</span>
-          </div>
-        </div>
-
-        {/* Capture Button */}
-        <div className="absolute bottom-8 left-0 right-0 flex justify-center">
-          <button
-            onClick={handleCapture}
-            className="w-20 h-20 rounded-full bg-white shadow-xl flex items-center justify-center border-4 border-gray-800"
+      <View style={styles.cameraContainer}>
+        {permission?.granted ? (
+          <CameraView
+            style={styles.camera}
+            facing={facing}
           >
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
-          </button>
-        </div>
-      </div>
+            {/* Top Bar */}
+            <View style={styles.topBar}>
+              <Pressable onPress={onCancel} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="white" />
+              </Pressable>
+              
+              <View style={styles.locationBadge}>
+                <Ionicons name="location" size={16} color="#22d3ee" />
+                <Text style={styles.locationText}>{getLocationString()}</Text>
+              </View>
+            </View>
+
+            {/* Capture Button */}
+            <View style={styles.captureButtonContainer}>
+              <Pressable
+                onPress={handleCapture}
+                style={styles.captureButton}
+              >
+                <View style={styles.captureButtonInner} />
+              </Pressable>
+            </View>
+          </CameraView>
+        ) : (
+          <View style={styles.cameraPlaceholder}>
+            <Ionicons name="camera" size={96} color="#4b5563" />
+            <Text style={styles.placeholderText}>Camera View</Text>
+            <Pressable onPress={requestPermission} style={styles.permissionButton}>
+              <Text style={styles.permissionButtonText}>Grant Camera Permission</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
     );
   }
 
   return (
-    <div className="h-full bg-white flex flex-col">
+    <View style={styles.container}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <button onClick={onCancel} className="text-gray-600">
-          Cancel
-        </button>
-        <h2 className="text-gray-900">New Post</h2>
-        <button onClick={handlePost} className="text-cyan-500">
-          Post
-        </button>
-      </div>
+      <View style={styles.header}>
+        <Pressable onPress={onCancel}>
+          <Text style={styles.cancelText}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>New Post</Text>
+        <Pressable onPress={handlePost}>
+          <Text style={styles.postText}>Post</Text>
+        </Pressable>
+      </View>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         {/* Photo Preview */}
-        <div className="w-full aspect-square bg-gradient-to-br from-gray-200 to-gray-300 rounded-3xl overflow-hidden">
-          <div className="w-full h-full flex items-center justify-center">
-            <Camera className="w-16 h-16 text-gray-400" />
-          </div>
-        </div>
+        <View style={styles.photoPreview}>
+          <Ionicons name="camera" size={64} color="#9ca3af" />
+        </View>
 
         {/* Location */}
-        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl">
-          <MapPin className="w-5 h-5 text-cyan-500" />
-          <div className="flex-1">
-            <p className="text-sm text-gray-900">San Francisco, CA</p>
-            <p className="text-xs text-gray-500">37.7749° N, 122.4194° W</p>
-          </div>
-        </div>
+        <View style={styles.locationContainer}>
+          <Ionicons name="location" size={20} color="#06b6d4" />
+          <View style={styles.locationTextContainer}>
+            <Text style={styles.locationTitle}>{getLocationString()}</Text>
+            <Text style={styles.locationCoords}>
+              {location ? `${location.coords.latitude.toFixed(4)}° N, ${location.coords.longitude.toFixed(4)}° W` : 'No location'}
+            </Text>
+          </View>
+        </View>
 
         {/* Caption */}
-        <div>
-          <label className="block text-sm text-gray-700 mb-2">Caption (optional)</label>
-          <textarea
+        <View style={styles.section}>
+          <Text style={styles.label}>Caption (optional)</Text>
+          <TextInput
             value={caption}
-            onChange={(e) => setCaption(e.target.value)}
+            onChangeText={setCaption}
             placeholder="Write a caption..."
-            className="w-full p-4 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-cyan-400"
-            rows={3}
+            style={styles.textInput}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
           />
-        </div>
+        </View>
 
         {/* Visibility */}
-        <div>
-          <label className="block text-sm text-gray-700 mb-3">Who can see this?</label>
-          <div className="space-y-2">
-            <button
-              onClick={() => setVisibility('personal')}
-              className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${
-                visibility === 'personal'
-                  ? 'border-cyan-500 bg-cyan-50'
-                  : 'border-gray-200 bg-white'
-              }`}
+        <View style={styles.section}>
+          <Text style={styles.label}>Who can see this?</Text>
+          <View style={styles.visibilityOptions}>
+            <Pressable
+              onPress={() => setVisibility('personal')}
+              style={[
+                styles.visibilityOption,
+                visibility === 'personal' && styles.visibilityOptionActive
+              ]}
             >
-              <Lock className="w-5 h-5 text-gray-600" />
-              <div className="flex-1 text-left">
-                <p className="text-sm text-gray-900">Just Me</p>
-                <p className="text-xs text-gray-500">Private to your map</p>
-              </div>
-            </button>
+              <Ionicons name="lock-closed" size={20} color="#4b5563" />
+              <View style={styles.visibilityTextContainer}>
+                <Text style={styles.visibilityTitle}>Just Me</Text>
+                <Text style={styles.visibilitySubtitle}>Private to your map</Text>
+              </View>
+            </Pressable>
 
-            <button
-              onClick={() => setVisibility('friends')}
-              className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${
-                visibility === 'friends'
-                  ? 'border-cyan-500 bg-cyan-50'
-                  : 'border-gray-200 bg-white'
-              }`}
+            <Pressable
+              onPress={() => setVisibility('friends')}
+              style={[
+                styles.visibilityOption,
+                visibility === 'friends' && styles.visibilityOptionActive
+              ]}
             >
-              <Users className="w-5 h-5 text-gray-600" />
-              <div className="flex-1 text-left">
-                <p className="text-sm text-gray-900">Friends</p>
-                <p className="text-xs text-gray-500">Share with friends</p>
-              </div>
-            </button>
+              <Ionicons name="people" size={20} color="#4b5563" />
+              <View style={styles.visibilityTextContainer}>
+                <Text style={styles.visibilityTitle}>Friends</Text>
+                <Text style={styles.visibilitySubtitle}>Share with friends</Text>
+              </View>
+            </Pressable>
 
-            <button
-              onClick={() => setVisibility('public')}
-              className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${
-                visibility === 'public'
-                  ? 'border-cyan-500 bg-cyan-50'
-                  : 'border-gray-200 bg-white'
-              }`}
+            <Pressable
+              onPress={() => setVisibility('public')}
+              style={[
+                styles.visibilityOption,
+                visibility === 'public' && styles.visibilityOptionActive
+              ]}
             >
-              <Globe className="w-5 h-5 text-gray-600" />
-              <div className="flex-1 text-left">
-                <p className="text-sm text-gray-900">Public</p>
-                <p className="text-xs text-gray-500">Visible on global map</p>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+              <Ionicons name="globe" size={20} color="#4b5563" />
+              <View style={styles.visibilityTextContainer}>
+                <Text style={styles.visibilityTitle}>Public</Text>
+                <Text style={styles.visibilitySubtitle}>Visible on global map</Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraPlaceholder: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderText: {
+    color: '#6b7280',
+    marginTop: 16,
+  },
+  permissionButton: {
+    marginTop: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#06b6d4',
+    borderRadius: 12,
+  },
+  permissionButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  locationText: {
+    color: 'white',
+    fontSize: 14,
+  },
+  captureButtonContainer: {
+    position: 'absolute',
+    bottom: 32,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#1f2937',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  captureButtonInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#06b6d4',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  cancelText: {
+    color: '#4b5563',
+    fontSize: 16,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  postText: {
+    color: '#06b6d4',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 16,
+    gap: 24,
+  },
+  photoPreview: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#f9fafb',
+    borderRadius: 16,
+  },
+  locationTextContainer: {
+    flex: 1,
+  },
+  locationTitle: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  locationCoords: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  section: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  textInput: {
+    width: '100%',
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 16,
+    fontSize: 16,
+    minHeight: 80,
+  },
+  visibilityOptions: {
+    gap: 8,
+  },
+  visibilityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  visibilityOptionActive: {
+    borderColor: '#06b6d4',
+    backgroundColor: '#ecfeff',
+  },
+  visibilityTextContainer: {
+    flex: 1,
+  },
+  visibilityTitle: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  visibilitySubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+});

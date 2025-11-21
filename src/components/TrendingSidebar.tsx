@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, MapPin } from 'lucide-react';
+import { View, Text, Pressable, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Photo } from '../App';
 
 interface TrendingSidebarProps {
@@ -10,113 +12,278 @@ interface TrendingSidebarProps {
   onVisibilityChange: (visible: boolean) => void;
 }
 
+const { height } = Dimensions.get('window');
+
 export function TrendingSidebar({ photos, onPhotoClick, isMapExpanded, isVisible, onVisibilityChange }: TrendingSidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Filter photos within a certain radius (mock logic - in reality would use geolocation)
   const nearbyPhotos = photos.slice(0, 8);
 
+  // Don't render if map is expanded
+  if (isMapExpanded) return null;
+
   return (
     <>
-      {/* Backdrop to close sidebar */}
+      {/* Backdrop to close sidebar - only when visible */}
       {isVisible && (
-        <div
-          className="absolute inset-0 z-20 bg-black/10 transition-opacity duration-300"
-          onClick={() => onVisibilityChange(false)}
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => onVisibilityChange(false)}
         />
       )}
       
-      <div 
-        className={`absolute right-0 z-30 transition-all duration-300 ease-in-out ${
-          isExpanded ? 'w-72' : 'w-12'
-        } ${
-          isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-        }`}
-        style={{ 
-          top: '50%', 
-          transform: isVisible ? 'translateY(-50%)' : 'translate(100%, -50%)',
-          height: '420px'
-        }}
-        onClick={(e) => e.stopPropagation()}
+      {/* Right peek tab - only when not visible */}
+      {!isVisible && (
+        <View style={styles.peekTab}>
+          <Ionicons name="chevron-back" size={16} color="#6b7280" />
+        </View>
+      )}
+      
+      {/* Sidebar - always rendered, visibility controlled by styles */}
+      <View 
+        style={[
+          styles.sidebar,
+          isExpanded ? styles.sidebarExpanded : styles.sidebarCollapsed,
+          isVisible ? styles.sidebarVisible : styles.sidebarHidden,
+        ]}
       >
-        <div className="relative h-full bg-white/95 backdrop-blur-sm shadow-lg rounded-l-2xl">
+        <View style={styles.sidebarContent}>
           {/* Toggle Button */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-12 bg-white rounded-l-full shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors z-10"
+          <Pressable
+            style={styles.toggleButton}
+            onPress={() => setIsExpanded(!isExpanded)}
           >
-            {isExpanded ? (
-              <ChevronRight className="w-4 h-4 text-gray-600" />
-            ) : (
-              <ChevronLeft className="w-4 h-4 text-gray-600" />
-            )}
-          </button>
+            <Ionicons 
+              name={isExpanded ? "chevron-forward" : "chevron-back"} 
+              size={16} 
+              color="#6b7280" 
+            />
+          </Pressable>
 
           {/* Content */}
-          <div className="h-full overflow-y-auto">
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {isExpanded ? (
-              <div className="p-4 space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <TrendingUp className="w-5 h-5 text-cyan-500" />
-                  <h3 className="text-sm text-gray-900">Trending Near You</h3>
-                </div>
+              <View style={styles.expandedContent}>
+                <View style={styles.header}>
+                  <Ionicons name="trending-up" size={20} color="#06b6d4" />
+                  <Text style={styles.title}>Trending Near You</Text>
+                </View>
                 
-                <div className="space-y-3">
+                <View style={styles.photosList}>
                   {nearbyPhotos.length > 0 ? (
                     nearbyPhotos.map((photo) => (
-                      <button
+                      <Pressable
                         key={photo.id}
-                        onClick={() => onPhotoClick(photo)}
-                        className="w-full group"
+                        onPress={() => onPhotoClick(photo)}
+                        style={styles.photoItem}
                       >
-                        <div className="relative aspect-square rounded-xl overflow-hidden mb-2">
-                          <img
-                            src={photo.imageUrl}
-                            alt={photo.caption || 'Photo'}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        <View style={styles.photoImageContainer}>
+                          <Image
+                            source={{ uri: photo.imageUrl }}
+                            style={styles.photoImage}
+                            contentFit="cover"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="absolute bottom-2 left-2 right-2">
-                              <p className="text-white text-xs line-clamp-2">
-                                {photo.caption || 'View photo'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-2 px-1">
-                          <MapPin className="w-3 h-3 text-cyan-500 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 text-left">
-                            <p className="text-xs text-gray-600 line-clamp-1">
+                        </View>
+                        <View style={styles.photoInfo}>
+                          <Ionicons name="location" size={12} color="#06b6d4" />
+                          <View style={styles.photoInfoText}>
+                            <Text style={styles.photoLocation} numberOfLines={1}>
                               {photo.location}
-                            </p>
-                            <p className="text-[10px] text-gray-400">
-                              {photo.timestamp.toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      </button>
+                            </Text>
+                            <Text style={styles.photoDate}>
+                              {new Date(photo.timestamp).toLocaleDateString()}
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
                     ))
                   ) : (
-                    <div className="text-center py-8 text-gray-400 text-sm">
-                      No trending photos nearby
-                    </div>
+                    <View style={styles.emptyState}>
+                      <Text style={styles.emptyStateText}>No trending photos nearby</Text>
+                    </View>
                   )}
-                </div>
-              </div>
+                </View>
+              </View>
             ) : (
-              <div className="h-full flex items-center justify-center">
-                <button
-                  onClick={() => setIsExpanded(true)}
-                  className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-shadow"
-                  title="Trending Near You"
+              <View style={styles.collapsedContent}>
+                <Pressable
+                  style={styles.trendingButton}
+                  onPress={() => setIsExpanded(true)}
                 >
-                  <TrendingUp className="w-4 h-4" />
-                </button>
-              </div>
+                  <Ionicons name="trending-up" size={16} color="white" />
+                </Pressable>
+              </View>
             )}
-          </div>
-        </div>
-      </div>
+          </ScrollView>
+        </View>
+      </View>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  backdrop: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    zIndex: 20,
+  },
+  triggerZone: {
+    position: 'absolute',
+    right: 0,
+    top: height * 0.2,
+    bottom: 0,
+    width: 64,
+    zIndex: 20,
+  },
+  peekTab: {
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    transform: [{ translateY: -32 }],
+    width: 32,
+    height: 64,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 20,
+  },
+  sidebar: {
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    transform: [{ translateY: -210 }],
+    height: 420,
+    zIndex: 30,
+  },
+  sidebarCollapsed: {
+    width: 48,
+  },
+  sidebarExpanded: {
+    width: 288,
+  },
+  sidebarVisible: {
+    opacity: 1,
+    transform: [{ translateX: 0 }, { translateY: -210 }],
+  },
+  sidebarHidden: {
+    opacity: 0,
+    transform: [{ translateX: 288 }, { translateY: -210 }],
+  },
+  sidebarContent: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  toggleButton: {
+    position: 'absolute',
+    left: -12,
+    top: '50%',
+    transform: [{ translateY: -24 }],
+    width: 24,
+    height: 48,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderBottomLeftRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
+  },
+  content: {
+    flex: 1,
+  },
+  expandedContent: {
+    padding: 16,
+    gap: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  photosList: {
+    gap: 12,
+  },
+  photoItem: {
+    gap: 8,
+  },
+  photoImageContainer: {
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  photoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  photoInfoText: {
+    flex: 1,
+  },
+  photoLocation: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  photoDate: {
+    fontSize: 10,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  collapsedContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trendingButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#06b6d4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  emptyState: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+});

@@ -1,40 +1,58 @@
-import { X, Heart, MessageCircle, Share2, MapPin, Lock, Users, Globe } from 'lucide-react';
+import React, { useState } from 'react';
+import { View, Text, Pressable, StyleSheet, ScrollView, TextInput, Share, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Photo } from '../App';
-import { useState } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Image as ExpoImage } from 'expo-image';
 
 interface PhotoDetailsProps {
-  photo: Photo;
-  onClose: () => void;
+  photo?: Photo;
+  onClose?: () => void;
   onViewOnMap?: () => void;
   onProfileClick?: (username: string) => void;
   onVisibilityChange?: (photoId: string, newVisibility: 'personal' | 'friends' | 'public') => void;
+  navigation?: any;
+  route?: any;
 }
 
-export function PhotoDetails({ photo, onClose, onViewOnMap, onProfileClick, onVisibilityChange }: PhotoDetailsProps) {
+export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilityChange, navigation, route }: PhotoDetailsProps) {
+  const nav = useNavigation();
+  const routeParams = useRoute();
+  const photo = (routeParams.params as any)?.photo || (route as any)?.params?.photo;
+  
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(photo.likes);
+  const [likeCount, setLikeCount] = useState(photo?.likes || 0);
   const [showComments, setShowComments] = useState(false);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState<Array<{ author: string; text: string }>>([]);
-  const [currentVisibility, setCurrentVisibility] = useState(photo.visibility);
+  const [currentVisibility, setCurrentVisibility] = useState(photo?.visibility || 'friends');
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   
-  const isOwnPhoto = photo.author === 'You';
+  const isOwnPhoto = photo?.author === 'You';
+
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      nav.goBack();
+    }
+  };
 
   const handleVisibilityChange = (newVisibility: 'personal' | 'friends' | 'public') => {
     setCurrentVisibility(newVisibility);
     setShowVisibilityMenu(false);
-    if (onVisibilityChange) {
+    if (onVisibilityChange && photo) {
       onVisibilityChange(photo.id, newVisibility);
     }
   };
 
   const getVisibilityIcon = (visibility: string) => {
     switch (visibility) {
-      case 'personal': return <Lock className="w-4 h-4" />;
-      case 'friends': return <Users className="w-4 h-4" />;
-      case 'public': return <Globe className="w-4 h-4" />;
-      default: return null;
+      case 'personal': return 'lock-closed' as const;
+      case 'friends': return 'people' as const;
+      case 'public': return 'globe' as const;
+      default: return 'lock-closed' as const;
     }
   };
 
@@ -67,261 +85,363 @@ export function PhotoDetails({ photo, onClose, onViewOnMap, onProfileClick, onVi
     }
   };
 
-  const handleShare = () => {
-    // Mock share functionality
-    alert('Share functionality - would open native share dialog');
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Check out this photo from ${photo?.author} on FlickMaps!`,
+        url: photo?.imageUrl,
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Unable to share photo');
+    }
+  };
+
+  if (!photo) {
+    return null;
+  }
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString();
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
-    <div className="h-full bg-black relative flex flex-col">
+    <View style={styles.container}>
       {/* Close Button */}
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 z-30 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center"
+      <Pressable
+        onPress={handleClose}
+        style={styles.closeButton}
       >
-        <X className="w-6 h-6 text-white" />
-      </button>
+        <View style={styles.closeButtonInner}>
+          <Ionicons name="close" size={24} color="white" />
+        </View>
+      </Pressable>
 
       {/* Photo */}
-      <div className="flex-1 relative">
-        <img
-          src={photo.imageUrl}
-          alt={photo.caption || 'Photo'}
-          className="w-full h-full object-cover"
+      <View style={styles.photoContainer}>
+        <ExpoImage
+          source={{ uri: photo.imageUrl }}
+          style={styles.photo}
+          contentFit="cover"
         />
         
         {/* Gradient Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 to-transparent" />
+        <LinearGradient
+          colors={['transparent', 'rgba(0, 0, 0, 0.8)']}
+          style={styles.gradientOverlay}
+        />
         
         {/* Photo Info Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-          <div className="flex items-center gap-3 mb-3">
-            <button 
-              onClick={() => onProfileClick && onProfileClick(photo.author)}
-              className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center overflow-hidden hover:scale-110 transition-transform"
+        <View style={styles.photoInfo}>
+          <View style={styles.authorContainer}>
+            <Pressable 
+              onPress={() => onProfileClick && onProfileClick(photo.author)}
+              style={styles.avatarButton}
             >
               {photo.authorAvatar ? (
-                <img src={photo.authorAvatar} alt={photo.author} className="w-full h-full object-cover" />
+                <ExpoImage source={{ uri: photo.authorAvatar }} style={styles.avatar} contentFit="cover" />
               ) : (
-                <span className="text-sm">{photo.author[0]}</span>
+                <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarText}>{photo.author[0]}</Text>
+                </View>
               )}
-            </button>
-            <div className="flex-1">
-              <button 
-                onClick={() => onProfileClick && onProfileClick(photo.author)}
-                className="text-sm hover:text-cyan-300 transition-colors"
+            </Pressable>
+            <View style={styles.authorInfo}>
+              <Pressable 
+                onPress={() => onProfileClick && onProfileClick(photo.author)}
               >
-                {photo.author}
-              </button>
-              <p className="text-xs text-gray-300">
-                {photo.timestamp.toLocaleDateString()} at {photo.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          </div>
+                <Text style={styles.authorName}>{photo.author}</Text>
+              </Pressable>
+              <Text style={styles.timestamp}>
+                {formatDate(photo.timestamp)} at {formatTime(photo.timestamp)}
+              </Text>
+            </View>
+          </View>
           
           {photo.caption && (
-            <p className="text-sm mb-3">{photo.caption}</p>
+            <Text style={styles.caption}>{photo.caption}</Text>
           )}
-        </div>
-      </div>
+        </View>
+      </View>
 
       {/* Action Bar */}
-      <div className="bg-white border-t border-gray-200">
-        <div className="flex items-center justify-around py-4 px-6">
-          <button className="flex flex-col items-center gap-1" onClick={handleLike}>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-              isLiked ? 'bg-red-100' : 'bg-gray-100'
-            }`}>
-              <Heart className={`w-6 h-6 transition-colors ${
-                isLiked ? 'text-red-500 fill-red-500' : 'text-gray-700'
-              }`} />
-            </div>
-            <span className="text-xs text-gray-600">{likeCount}</span>
-          </button>
-          
-          <button className="flex flex-col items-center gap-1" onClick={handleComment}>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-              showComments ? 'bg-cyan-100' : 'bg-gray-100'
-            }`}>
-              <MessageCircle className={`w-6 h-6 ${
-                showComments ? 'text-cyan-600' : 'text-gray-700'
-              }`} />
-            </div>
-            <span className="text-xs text-gray-600">Comment</span>
-          </button>
-          
-          <button className="flex flex-col items-center gap-1" onClick={handleShare}>
-            <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-              <Share2 className="w-6 h-6 text-gray-700" />
-            </div>
-            <span className="text-xs text-gray-600">Share</span>
-          </button>
-        </div>
-      </div>
+      <View style={styles.actionBar}>
+        <Pressable style={styles.actionButton} onPress={handleLike}>
+          <View style={[styles.actionButtonInner, isLiked && styles.actionButtonLiked]}>
+            <Ionicons 
+              name={isLiked ? "heart" : "heart-outline"} 
+              size={24} 
+              color={isLiked ? '#ef4444' : '#374151'} 
+            />
+          </View>
+          <Text style={styles.actionLabel}>{likeCount}</Text>
+        </Pressable>
+        
+        <Pressable style={styles.actionButton} onPress={handleComment}>
+          <View style={[styles.actionButtonInner, showComments && styles.actionButtonActive]}>
+            <Ionicons 
+              name="chatbubble-outline" 
+              size={24} 
+              color={showComments ? '#06b6d4' : '#374151'} 
+            />
+          </View>
+          <Text style={styles.actionLabel}>Comment</Text>
+        </Pressable>
+        
+        <Pressable style={styles.actionButton} onPress={handleShare}>
+          <View style={styles.actionButtonInner}>
+            <Ionicons name="share-outline" size={24} color="#374151" />
+          </View>
+          <Text style={styles.actionLabel}>Share</Text>
+        </Pressable>
+      </View>
 
-      {/* Map Snippet */}
-      <div className="bg-white border-t border-gray-200">
-        {showComments ? (
-          <div className="p-4 max-h-64 overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm text-gray-900">Comments</h3>
-              <button onClick={() => setShowComments(false)} className="text-xs text-cyan-500">
-                Close
-              </button>
-            </div>
-            
+      {/* Comments Section */}
+      {showComments && (
+        <View style={styles.commentsSection}>
+          <View style={styles.commentsHeader}>
+            <Text style={styles.commentsTitle}>Comments</Text>
+            <Pressable onPress={() => setShowComments(false)}>
+              <Text style={styles.closeCommentsText}>Close</Text>
+            </Pressable>
+          </View>
+          
+          <ScrollView style={styles.commentsList}>
             {comments.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">No comments yet</p>
+              <Text style={styles.noComments}>No comments yet</Text>
             ) : (
-              <div className="space-y-3 mb-3">
-                {comments.map((c, i) => (
-                  <div key={i} className="flex gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-white text-xs flex-shrink-0">
-                      {c.author[0]}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-900">{c.author}</p>
-                      <p className="text-sm text-gray-700">{c.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              comments.map((c, i) => (
+                <View key={i} style={styles.commentItem}>
+                  <View style={styles.commentAvatar}>
+                    <Text style={styles.commentAvatarText}>{c.author[0]}</Text>
+                  </View>
+                  <View style={styles.commentContent}>
+                    <Text style={styles.commentAuthor}>{c.author}</Text>
+                    <Text style={styles.commentText}>{c.text}</Text>
+                  </View>
+                </View>
+              ))
             )}
-            
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSubmitComment()}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
-              />
-              <button
-                onClick={handleSubmitComment}
-                className="px-4 py-2 bg-cyan-500 text-white rounded-xl text-sm hover:bg-cyan-600 transition-colors"
-              >
-                Post
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4">
-            <div className="flex items-start gap-3">
-              <MapPin className="w-5 h-5 text-cyan-500 mt-1 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-900 mb-2">Photo Location</p>
-                <button
-                  onClick={onViewOnMap}
-                  className="w-full h-32 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl relative overflow-hidden hover:from-blue-200 hover:to-cyan-200 transition-colors"
-                >
-                  {/* Simplified Map View */}
-                  <div className="absolute inset-0 opacity-20" style={{
-                    backgroundImage: `
-                      linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)
-                    `,
-                    backgroundSize: '20px 20px'
-                  }} />
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                    <MapPin className="w-8 h-8 text-cyan-500 fill-current drop-shadow-lg" />
-                  </div>
-                  <div className="absolute bottom-2 left-2 text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
-                    {photo.lat.toFixed(4)}°, {photo.lng.toFixed(4)}°
-                  </div>
-                  <div className="absolute top-2 right-2 text-xs text-cyan-600 bg-white/90 px-2 py-1 rounded">
-                    View on Map
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Visibility Controls */}
-      {isOwnPhoto && (
-        <div className="bg-white border-t border-gray-200 relative">
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {getVisibilityIcon(currentVisibility)}
-                <span className="text-sm text-gray-900">
-                  Visible to: <span className="text-cyan-600">{getVisibilityLabel(currentVisibility)}</span>
-                </span>
-              </div>
-              <button
-                onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
-                className="px-4 py-2 bg-gray-100 rounded-xl text-sm text-gray-700 hover:bg-gray-200 transition-colors"
-              >
-                Change
-              </button>
-            </div>
-          </div>
+          </ScrollView>
           
-          {/* Visibility Dropdown Menu */}
-          {showVisibilityMenu && (
-            <>
-              {/* Backdrop */}
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setShowVisibilityMenu(false)}
-              />
-              
-              {/* Menu */}
-              <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50">
-                <button
-                  onClick={() => handleVisibilityChange('personal')}
-                  className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors ${
-                    currentVisibility === 'personal' ? 'bg-cyan-50' : ''
-                  }`}
-                >
-                  <Lock className="w-5 h-5 text-gray-700" />
-                  <div className="flex-1 text-left">
-                    <p className="text-sm text-gray-900">Only Me</p>
-                    <p className="text-xs text-gray-500">Only you can see this photo</p>
-                  </div>
-                  {currentVisibility === 'personal' && (
-                    <div className="w-2 h-2 rounded-full bg-cyan-500" />
-                  )}
-                </button>
-                
-                <button
-                  onClick={() => handleVisibilityChange('friends')}
-                  className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors border-t border-gray-100 ${
-                    currentVisibility === 'friends' ? 'bg-cyan-50' : ''
-                  }`}
-                >
-                  <Users className="w-5 h-5 text-gray-700" />
-                  <div className="flex-1 text-left">
-                    <p className="text-sm text-gray-900">Friends</p>
-                    <p className="text-xs text-gray-500">Your friends can see this photo</p>
-                  </div>
-                  {currentVisibility === 'friends' && (
-                    <div className="w-2 h-2 rounded-full bg-cyan-500" />
-                  )}
-                </button>
-                
-                <button
-                  onClick={() => handleVisibilityChange('public')}
-                  className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors border-t border-gray-100 ${
-                    currentVisibility === 'public' ? 'bg-cyan-50' : ''
-                  }`}
-                >
-                  <Globe className="w-5 h-5 text-gray-700" />
-                  <div className="flex-1 text-left">
-                    <p className="text-sm text-gray-900">Public</p>
-                    <p className="text-xs text-gray-500">Everyone can see this photo</p>
-                  </div>
-                  {currentVisibility === 'public' && (
-                    <div className="w-2 h-2 rounded-full bg-cyan-500" />
-                  )}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+          <View style={styles.commentInputContainer}>
+            <TextInput
+              value={comment}
+              onChangeText={setComment}
+              placeholder="Add a comment..."
+              style={styles.commentInput}
+              onSubmitEditing={handleSubmitComment}
+            />
+            <Pressable onPress={handleSubmitComment} style={styles.sendButton}>
+              <Ionicons name="send" size={20} color="#06b6d4" />
+            </Pressable>
+          </View>
+        </View>
       )}
-    </div>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 30,
+  },
+  closeButtonInner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+  },
+  gradientOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 128,
+  },
+  photoInfo: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+  },
+  authorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  avatarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#06b6d4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  authorInfo: {
+    flex: 1,
+  },
+  authorName: {
+    fontSize: 14,
+    color: 'white',
+    fontWeight: '500',
+  },
+  timestamp: {
+    fontSize: 12,
+    color: '#d1d5db',
+    marginTop: 2,
+  },
+  caption: {
+    fontSize: 14,
+    color: 'white',
+    marginBottom: 12,
+  },
+  actionBar: {
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  actionButton: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  actionButtonInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonLiked: {
+    backgroundColor: '#fef2f2',
+  },
+  actionButtonActive: {
+    backgroundColor: '#ecfeff',
+  },
+  actionLabel: {
+    fontSize: 12,
+    color: '#4b5563',
+  },
+  commentsSection: {
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    maxHeight: 256,
+  },
+  commentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  commentsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  closeCommentsText: {
+    fontSize: 12,
+    color: '#06b6d4',
+  },
+  commentsList: {
+    paddingHorizontal: 16,
+    maxHeight: 200,
+  },
+  noComments: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#06b6d4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentAvatarText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentAuthor: {
+    fontSize: 12,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  commentText: {
+    fontSize: 14,
+    color: '#374151',
+    marginTop: 2,
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  commentInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    fontSize: 14,
+  },
+  sendButton: {
+    padding: 8,
+  },
+});

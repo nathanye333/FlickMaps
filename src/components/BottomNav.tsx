@@ -1,78 +1,123 @@
-import { User, Users, Globe, Camera, Compass } from 'lucide-react';
-import { Screen, MapTab } from '../App';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface BottomNavProps {
-  currentScreen: Screen;
-  onNavigate: (screen: Screen) => void;
+  currentScreen: string;
+  onNavigate?: (screen: string) => void;
   onUploadClick?: () => void;
-  activeMapTab?: MapTab;
-  onMapTabChange?: (tab: MapTab) => void;
 }
 
-export function BottomNav({ currentScreen, onNavigate, onUploadClick, activeMapTab, onMapTabChange }: BottomNavProps) {
-  return (
-    <div className="bg-white border-t border-gray-200 safe-area-bottom">
-      <div className="flex items-center justify-around px-4 py-2 relative">
-        {/* Map Button */}
-        <button
-          onClick={() => onNavigate('map')}
-          className={`flex flex-col items-center gap-1 py-2 px-3 rounded-xl transition-all ${
-            currentScreen === 'map' ? 'text-cyan-500' : 'text-gray-400'
-          }`}
-        >
-          <Globe className="w-6 h-6" />
-          <span className="text-xs">Map</span>
-        </button>
-        
-        {/* Friends Button */}
-        <button
-          onClick={() => onNavigate('friends')}
-          className={`flex flex-col items-center gap-1 py-2 px-3 rounded-xl transition-all ${
-            currentScreen === 'friends' ? 'text-cyan-500' : 'text-gray-400'
-          }`}
-        >
-          <Users className="w-6 h-6" />
-          <span className="text-xs">Friends</span>
-        </button>
+export function BottomNav({ currentScreen, onNavigate, onUploadClick }: BottomNavProps) {
+  const navigation = useNavigation();
 
+  const handleNavigate = (screen: string) => {
+    if (onNavigate) {
+      onNavigate(screen);
+    } else {
+      navigation.navigate(screen as never);
+    }
+  };
+
+  const navItems = [
+    { screen: 'Map', icon: 'globe' as const, label: 'Map' },
+    { screen: 'Friends', icon: 'people' as const, label: 'Friends' },
+    { screen: 'Explore', icon: 'compass' as const, label: 'Explore' },
+    { screen: 'Profile', icon: 'person' as const, label: 'Profile' },
+  ];
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.navContainer}>
+        {navItems.map((item, index) => {
+          const isActive = currentScreen === item.screen;
+          return (
+            <Pressable
+              key={item.screen}
+              onPress={() => handleNavigate(item.screen)}
+              style={styles.navButton}
+            >
+              <Ionicons 
+                name={item.icon} 
+                size={24} 
+                color={isActive ? '#06b6d4' : '#9ca3af'} 
+              />
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+        
         {/* Center Capture Button */}
-        <button
-          onClick={() => {
+        <Pressable
+          onPress={() => {
             if (onUploadClick) {
               onUploadClick();
             } else {
-              onNavigate('capture');
+              handleNavigate('Capture');
             }
           }}
-          className="flex items-center justify-center -mt-2"
+          style={styles.captureButton}
         >
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
-            <Camera className="w-6 h-6 text-white" />
-          </div>
-        </button>
-
-        {/* Explore Button */}
-        <button
-          onClick={() => onNavigate('explore')}
-          className={`flex flex-col items-center gap-1 py-2 px-3 rounded-xl transition-all ${
-            currentScreen === 'explore' ? 'text-cyan-500' : 'text-gray-400'
-          }`}
-        >
-          <Compass className="w-6 h-6" />
-          <span className="text-xs">Explore</span>
-        </button>
-
-        {/* Profile Button */}
-        <button
-          onClick={() => onNavigate('profile')}
-          className={`flex flex-col items-center gap-1 py-2 px-3 rounded-xl transition-all ${
-            currentScreen === 'profile' ? 'text-cyan-500' : 'text-gray-400'
-          }`}
-        >
-          <User className="w-6 h-6" />
-          <span className="text-xs">Profile</span>
-        </button>
-      </div>
-    </div>
+          <LinearGradient
+            colors={['#06b6d4', '#3b82f6']} // from-cyan-500 to-blue-500
+            style={styles.captureButtonInner}
+          >
+            <Ionicons name="camera" size={24} color="white" />
+          </LinearGradient>
+        </Pressable>
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingBottom: 8,
+  },
+  navContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    position: 'relative',
+  },
+  navButton: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  navLabel: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  navLabelActive: {
+    color: '#06b6d4',
+  },
+  captureButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -8, // -mt-2 in original (8px)
+  },
+  captureButtonInner: {
+    width: 56, // w-14 h-14 in original (56px)
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+});

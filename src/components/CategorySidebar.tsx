@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Mountain, UtensilsCrossed, Building2, Compass, Plane, Sparkles } from 'lucide-react';
+import { View, Text, Pressable, StyleSheet, Animated, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface CategorySidebarProps {
   selectedCategory: string;
@@ -10,102 +11,253 @@ interface CategorySidebarProps {
 }
 
 const categories = [
-  { name: 'All', icon: Sparkles },
-  { name: 'Scenic', icon: Mountain },
-  { name: 'Food', icon: UtensilsCrossed },
-  { name: 'Architecture', icon: Building2 },
-  { name: 'Hidden Gems', icon: Compass },
-  { name: 'Travel', icon: Plane },
+  { name: 'All', icon: 'sparkles' as const },
+  { name: 'Scenic', icon: 'mountain' as const },
+  { name: 'Food', icon: 'restaurant' as const },
+  { name: 'Architecture', icon: 'business' as const },
+  { name: 'Hidden Gems', icon: 'compass' as const },
+  { name: 'Travel', icon: 'airplane' as const },
 ];
+
+const { height } = Dimensions.get('window');
 
 export function CategorySidebar({ selectedCategory, onCategoryChange, isMapExpanded, isVisible, onVisibilityChange }: CategorySidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Don't render if map is expanded
+  if (isMapExpanded) return null;
+
   return (
     <>
-      {/* Backdrop to close sidebar */}
+      {/* Backdrop to close sidebar - only when visible */}
       {isVisible && (
-        <div
-          className="absolute inset-0 z-20 bg-black/10 transition-opacity duration-300"
-          onClick={() => onVisibilityChange(false)}
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => onVisibilityChange(false)}
         />
       )}
       
-      <div 
-        className={`absolute left-0 z-30 transition-all duration-300 ease-in-out ${
-          isExpanded ? 'w-56' : 'w-12'
-        } ${
-          isVisible ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'
-        }`}
-        style={{ 
-          top: '50%', 
-          transform: isVisible ? 'translateY(-50%)' : 'translate(-100%, -50%)',
-          height: '320px'
-        }}
-        onClick={(e) => e.stopPropagation()}
+      {/* Left peek tab - only when not visible */}
+      {!isVisible && (
+        <View style={styles.peekTab}>
+          <Ionicons name="chevron-forward" size={16} color="#6b7280" />
+        </View>
+      )}
+      
+      {/* Sidebar - always rendered, visibility controlled by styles */}
+      <View 
+        style={[
+          styles.sidebar,
+          isExpanded ? styles.sidebarExpanded : styles.sidebarCollapsed,
+          isVisible ? styles.sidebarVisible : styles.sidebarHidden,
+        ]}
       >
-        <div className="relative h-full bg-white/95 backdrop-blur-sm shadow-lg rounded-r-2xl">
+        <View style={styles.sidebarContent}>
           {/* Toggle Button */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-12 bg-white rounded-r-full shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors z-10"
+          <Pressable
+            style={styles.toggleButton}
+            onPress={() => setIsExpanded(!isExpanded)}
           >
-            {isExpanded ? (
-              <ChevronLeft className="w-4 h-4 text-gray-600" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-600" />
-            )}
-          </button>
+            <Ionicons 
+              name={isExpanded ? "chevron-back" : "chevron-forward"} 
+              size={16} 
+              color="#6b7280" 
+            />
+          </Pressable>
 
           {/* Content */}
-          <div className="h-full overflow-y-auto p-3">
+          <View style={styles.content}>
             {isExpanded ? (
-              <div className="space-y-2">
-                <h3 className="text-sm text-gray-900 mb-4 px-2">Categories</h3>
+              <View style={styles.expandedContent}>
+                <Text style={styles.title}>Categories</Text>
                 {categories.map((category) => {
-                  const Icon = category.icon;
                   const isSelected = selectedCategory === category.name;
                   return (
-                    <button
+                    <Pressable
                       key={category.name}
-                      onClick={() => onCategoryChange(category.name)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                        isSelected
-                          ? 'bg-cyan-500 text-white shadow-sm'
-                          : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                      }`}
+                      onPress={() => onCategoryChange(category.name)}
+                      style={[
+                        styles.categoryButton,
+                        isSelected && styles.categoryButtonActive
+                      ]}
                     >
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm">{category.name}</span>
-                    </button>
+                      <Ionicons 
+                        name={category.icon} 
+                        size={16} 
+                        color={isSelected ? 'white' : '#374151'} 
+                      />
+                      <Text style={[
+                        styles.categoryText,
+                        isSelected && styles.categoryTextActive
+                      ]}>
+                        {category.name}
+                      </Text>
+                    </Pressable>
                   );
                 })}
-              </div>
+              </View>
             ) : (
-              <div className="space-y-3 flex flex-col items-center pt-3">
+              <View style={styles.collapsedContent}>
                 {categories.map((category) => {
-                  const Icon = category.icon;
                   const isSelected = selectedCategory === category.name;
                   return (
-                    <button
+                    <Pressable
                       key={category.name}
-                      onClick={() => onCategoryChange(category.name)}
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                        isSelected
-                          ? 'bg-cyan-500 text-white shadow-sm'
-                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                      }`}
-                      title={category.name}
+                      onPress={() => onCategoryChange(category.name)}
+                      style={[
+                        styles.categoryIconButton,
+                        isSelected && styles.categoryIconButtonActive
+                      ]}
                     >
-                      <Icon className="w-4 h-4" />
-                    </button>
+                      <Ionicons 
+                        name={category.icon} 
+                        size={16} 
+                        color={isSelected ? 'white' : '#6b7280'} 
+                      />
+                    </Pressable>
                   );
                 })}
-              </div>
+              </View>
             )}
-          </div>
-        </div>
-      </div>
+          </View>
+        </View>
+      </View>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  backdrop: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    zIndex: 20,
+  },
+  triggerZone: {
+    position: 'absolute',
+    left: 0,
+    top: height * 0.3,
+    bottom: 0,
+    width: 64,
+    zIndex: 20,
+  },
+  peekTab: {
+    position: 'absolute',
+    left: 0,
+    top: '50%',
+    transform: [{ translateY: -32 }],
+    width: 32,
+    height: 64,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 20,
+  },
+  sidebar: {
+    position: 'absolute',
+    left: 0,
+    top: '50%',
+    transform: [{ translateY: -160 }],
+    height: 320,
+    zIndex: 30,
+  },
+  sidebarCollapsed: {
+    width: 48,
+  },
+  sidebarExpanded: {
+    width: 224,
+  },
+  sidebarVisible: {
+    opacity: 1,
+    transform: [{ translateX: 0 }, { translateY: -160 }],
+  },
+  sidebarHidden: {
+    opacity: 0,
+    transform: [{ translateX: -224 }, { translateY: -160 }],
+  },
+  sidebarContent: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  toggleButton: {
+    position: 'absolute',
+    right: -12,
+    top: '50%',
+    transform: [{ translateY: -24 }],
+    width: 24,
+    height: 48,
+    backgroundColor: 'white',
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
+  },
+  content: {
+    flex: 1,
+    padding: 12,
+  },
+  expandedContent: {
+    gap: 8,
+  },
+  title: {
+    fontSize: 14,
+    color: '#111827',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  categoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
+  },
+  categoryButtonActive: {
+    backgroundColor: '#06b6d4',
+  },
+  categoryText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  categoryTextActive: {
+    color: 'white',
+  },
+  collapsedContent: {
+    gap: 12,
+    alignItems: 'center',
+    paddingTop: 12,
+  },
+  categoryIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryIconButtonActive: {
+    backgroundColor: '#06b6d4',
+  },
+});

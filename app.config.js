@@ -1,0 +1,61 @@
+export default {
+  expo: {
+    name: "FlickMaps",
+    slug: "flickmaps",
+    version: "1.0.0",
+    sdkVersion: "54.0.0",
+    orientation: "portrait",
+    icon: "./assets/icon.png",
+    userInterfaceStyle: "light",
+    splash: {
+      image: "./assets/splash.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff"
+    },
+    assetBundlePatterns: [
+      "**/*"
+    ],
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: "com.flickmaps.app"
+    },
+    android: {
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#ffffff"
+      },
+      package: "com.flickmaps.app",
+      permissions: [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    web: {
+      favicon: "./assets/favicon.png"
+    },
+    plugins: [
+      [
+        "expo-camera",
+        {
+          cameraPermission: "Allow FlickMaps to access your camera to take photos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission: "Allow FlickMaps to use your location to tag photos on the map."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          photosPermission: "Allow FlickMaps to access your photos to upload them to the map."
+        }
+      ]
+    ]
+  }
+};
+
