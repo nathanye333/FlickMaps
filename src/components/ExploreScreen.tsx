@@ -46,8 +46,10 @@ export function ExploreScreen({ onPhotoSelect, onProfileClick, onChallengeClick,
       onPress={() => handlePhotoPress(item)}
       style={styles.photoItem}
     >
-      <Image source={{ uri: item.imageUrl }} style={styles.photoImage} />
-      <View style={styles.photoOverlay}>
+      <Image source={{ uri: item.imageUrl }} style={styles.photoImage} contentFit="cover" />
+      
+      {/* Profile Picture in Top-Left Corner - curved square style */}
+      <View style={styles.avatarContainer}>
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
@@ -55,13 +57,17 @@ export function ExploreScreen({ onPhotoSelect, onProfileClick, onChallengeClick,
           }}
           style={styles.photoAvatar}
         >
-          <Image source={{ uri: item.authorAvatar }} style={styles.avatarImage} />
+          <Image source={{ uri: item.authorAvatar }} style={styles.avatarImage} contentFit="cover" />
         </Pressable>
+      </View>
+      
+      {/* Likes at bottom right */}
+      {item.likes > 0 && (
         <View style={styles.photoStats}>
           <Ionicons name="heart" size={14} color="white" />
           <Text style={styles.photoLikes}>{item.likes}</Text>
         </View>
-      </View>
+      )}
     </Pressable>
   );
 
@@ -230,21 +236,19 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     margin: 4,
-    borderRadius: 16,
+    borderRadius: 12, // Curved square - matching PhotoStackModal
     overflow: 'hidden',
+    backgroundColor: '#f3f4f6',
   },
   photoImage: {
     width: '100%',
     height: '100%',
   },
-  photoOverlay: {
+  avatarContainer: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: 8,
-    justifyContent: 'space-between',
+    top: 8,
+    left: 8,
+    zIndex: 10,
   },
   photoAvatar: {
     width: 32,
@@ -253,12 +257,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   avatarImage: {
     width: '100%',
     height: '100%',
   },
   photoStats: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -266,7 +278,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    alignSelf: 'flex-end',
   },
   photoLikes: {
     color: 'white',

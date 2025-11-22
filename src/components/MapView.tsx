@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, Dimensions } from 'react-native';
-import MapViewComponent from 'react-native-maps';
-import { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Photo, MapTab } from '../App';
 import { mockPersonalPhotos, mockFriendsPhotos, mockGlobalPhotos, getPersonalPhotosForTab } from '../data/mockData';
@@ -15,6 +13,8 @@ import { PhotoStackModal } from './PhotoStackModal';
 import { DailyChallengeModal } from './DailyChallengeModal';
 import { PhotoUploadModal, UploadedPhoto } from './PhotoUploadModal';
 import { PhotoPin } from './PhotoPin';
+import MapViewComponent from 'react-native-maps';
+import { MapMarker } from './MapMarker';
 
 const { width, height } = Dimensions.get('window');
 
@@ -50,8 +50,8 @@ export function MapView(props: MapViewProps) {
   const [region, setRegion] = useState({
     latitude: 37.7749,
     longitude: -122.4194,
-    latitudeDelta: 0.5,
-    longitudeDelta: 0.5,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
   });
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(false);
   const [rightSidebarVisible, setRightSidebarVisible] = useState(false);
@@ -137,56 +137,144 @@ export function MapView(props: MapViewProps) {
     }
   }, [activeMapTab]);
 
-  // Group photos by location to avoid too many markers
+  // Calculate adaptive marker base size based on zoom level
+  // Referencing Leaflet implementation: Base size 100px, Stack 110px (1.1x), Selected 130px (1.3x)
+  // When zoomed in (small delta), markers are bigger. When zoomed out (large delta), markers are smaller.
+  // Note: This returns the BASE size only. Stack and selection factors are applied in MapMarker to match Leaflet's exact logic.
+  const calculateMarkerSize = (latitudeDelta: number, nearbyCount: number = 0): number => {
+    // Base size calculation from zoom level
+    // latitudeDelta ranges from ~0.001 (very zoomed in) to ~180 (world view)
+    // Leaflet had fixed 100px base, but we adapt based on zoom for better UX
+    // We want: zoomed in (0.001) -> large markers (100px base), zoomed out (0.1+) -> medium markers (70px base)
+    const zoomFactor = Math.max(0.001, Math.min(0.15, latitudeDelta));
+    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001); // 0 to 1
+    // Start with 100px base (matching Leaflet), adapt down when zoomed out
+    const baseSize = 70 + (1 - normalizedZoom) * 30; // Range 70-100px (matching Leaflet's 100px base when zoomed in)
+    
+    // Adjust for photo density to prevent overlap
+    // If there are many photos nearby, make them slightly smaller to prevent overlap
+    const densityFactor = Math.max(0.75, 1 - (nearbyCount * 0.03));
+    
+    // Return base size only - stack and selection factors applied in MapMarker
+    const finalSize = Math.max(50, Math.min(100, baseSize * densityFactor));
+    return Math.round(finalSize);
+  };
+
+  // Adaptive clustering based on zoom level
+  // When zoomed out, cluster more aggressively. When zoomed in, allow more separation.
+  // Stacks should split when user zooms in enough to differentiate distance
   const photoGroups = useMemo(() => {
+    if (photos.length === 0) return [];
+    
     const groups = new Map<string, Photo[]>();
-    const threshold = 0.001; // ~100m
+    
+    // Dynamic threshold based on zoom level and estimated marker size
+    // When zoomed in (small delta), use smaller threshold to allow separation
+    // When zoomed out (large delta), use larger threshold to cluster more
+    // Estimate max size (stack + selection could be up to 130px)
+    const estimatedBaseSize = calculateMarkerSize(region.latitudeDelta, 0);
+    const estimatedMarkerSize = Math.min(estimatedBaseSize * 1.3, 130); // Max possible size
+    
+    // Convert marker size in pixels to approximate lat/lng distance
+    // Approximate: 1 degree latitude ≈ 111km, screen width varies
+    // For a typical screen, we want markers to cluster if they'd overlap
+    // Rough conversion: marker size in pixels / screen pixels per degree
+    const screenWidthDegrees = region.longitudeDelta;
+    const pixelsPerDegree = width / screenWidthDegrees;
+    const markerSizeInDegrees = estimatedMarkerSize / pixelsPerDegree;
+    
+    // Threshold should be based on marker size to prevent overlap
+    // Use a factor of the marker size, adjusted by zoom
+    const zoomFactor = Math.max(0.001, Math.min(0.15, region.latitudeDelta));
+    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001);
+    
+    // When zoomed out (high normalizedZoom), cluster more (larger threshold)
+    // When zoomed in (low normalizedZoom), cluster less (smaller threshold)
+    const baseThreshold = 0.0005; // Base ~50m
+    const zoomAdjustedThreshold = baseThreshold * (1 + normalizedZoom * 3); // 0.0005 to 0.002
+    
+    // Also consider marker size - if markers are big, need larger threshold
+    const sizeBasedThreshold = markerSizeInDegrees * 1.5; // 1.5x marker size to prevent overlap
+    
+    const finalThreshold = Math.max(0.0002, Math.min(0.005, Math.max(zoomAdjustedThreshold, sizeBasedThreshold)));
     
     photos.forEach(photo => {
-      let found = false;
+      let bestGroup: [string, Photo[]] | null = null;
+      let minDistance = Infinity;
+      
+      // Find the closest existing group within threshold
       for (const [key, group] of groups.entries()) {
         const [lat, lng] = key.split(',').map(Number);
-        if (Math.abs(photo.lat - lat) < threshold && Math.abs(photo.lng - lng) < threshold) {
-          group.push(photo);
-          found = true;
-          break;
+        const distance = Math.sqrt(
+          Math.pow(photo.lat - lat, 2) + Math.pow(photo.lng - lng, 2)
+        );
+        
+        if (distance < finalThreshold && distance < minDistance) {
+          minDistance = distance;
+          bestGroup = [key, group];
         }
       }
-      if (!found) {
+      
+      if (bestGroup) {
+        bestGroup[1].push(photo);
+      } else {
         groups.set(`${photo.lat},${photo.lng}`, [photo]);
       }
     });
     
-    return Array.from(groups.entries()).map(([key, groupPhotos]) => ({
-      key,
-      photos: groupPhotos,
-      lat: groupPhotos[0].lat,
-      lng: groupPhotos[0].lng,
-    }));
-  }, [photos]);
+    // Calculate sizes for each group based on zoom and nearby density
+    const groupArray = Array.from(groups.entries());
+    
+    return groupArray.map(([key, groupPhotos]) => {
+      // Count how many other groups are nearby to adjust size and prevent overlap
+      const [lat, lng] = key.split(',').map(Number);
+      const nearbyCount = groupArray.filter(([otherKey, otherPhotos]) => {
+        if (otherKey === key) return false;
+        const [otherLat, otherLng] = otherKey.split(',').map(Number);
+        const distance = Math.sqrt(
+          Math.pow(lat - otherLat, 2) + Math.pow(lng - otherLng, 2)
+        );
+        // Check within 3x threshold for density calculation
+        return distance < finalThreshold * 3;
+      }).length;
+      
+      // Pass base size only - MapMarker will apply stack and selection factors like Leaflet
+      const size = calculateMarkerSize(region.latitudeDelta, nearbyCount);
+      
+      return {
+        key,
+        photos: groupPhotos,
+        lat: groupPhotos[0].lat,
+        lng: groupPhotos[0].lng,
+        size,
+      };
+    });
+  }, [photos, region.latitudeDelta, region.longitudeDelta, width]);
 
   useEffect(() => {
     if (selectedPhoto && mapRef.current) {
-      mapRef.current.animateToRegion({
+      const newRegion = {
         latitude: selectedPhoto.lat,
         longitude: selectedPhoto.lng,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      }, 1000);
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setRegion(newRegion);
+      // Set the appropriate tab based on photo visibility
+      if (selectedPhoto.visibility === 'personal') {
+        setActiveMapTab('personal');
+      } else if (selectedPhoto.visibility === 'friends') {
+        setActiveMapTab('friends');
+      } else if (selectedPhoto.visibility === 'public') {
+        setActiveMapTab('global');
+      }
+      // Center map on photo
+      setTimeout(() => {
+        mapRef.current?.animateToRegion(newRegion, 300);
+      }, 100);
     }
   }, [selectedPhoto]);
 
-  const handleMarkerPress = (group: typeof photoGroups[0]) => {
-    const photo = group.photos[0];
-    // If it's a stack, show modal; otherwise open photo directly
-    if (group.photos.length > 1) {
-      setSelectedStack(group.photos);
-    } else if (props.onPhotoSelect) {
-      props.onPhotoSelect(photo);
-    } else {
-      navigation.navigate('PhotoDetails' as never, { photo } as never);
-    }
-  };
 
   const handlePhotosUploaded = (uploaded: UploadedPhoto[]) => {
     // Convert uploaded photos to Photo format
@@ -210,13 +298,18 @@ export function MapView(props: MapViewProps) {
   };
 
   const zoomToPhoto = (photo: Photo) => {
+    const newRegion = {
+      latitude: photo.lat,
+      longitude: photo.lng,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+    setRegion(newRegion);
     if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: photo.lat,
-        longitude: photo.lng,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      }, 1000);
+      mapRef.current.animateToRegion(newRegion, 300);
+    }
+    if (props.onPhotoSelect) {
+      props.onPhotoSelect(photo);
     }
   };
 
@@ -236,19 +329,35 @@ export function MapView(props: MapViewProps) {
   };
 
   const handleZoomIn = () => {
-    setRegion(prev => ({
-      ...prev,
-      latitudeDelta: Math.max(0.01, prev.latitudeDelta * 0.7),
-      longitudeDelta: Math.max(0.01, prev.longitudeDelta * 0.7),
-    }));
+    setRegion(prev => {
+      const newLatitudeDelta = Math.max(0.001, prev.latitudeDelta * 0.5);
+      const newLongitudeDelta = Math.max(0.001, prev.longitudeDelta * 0.5);
+      const newRegion = {
+        ...prev,
+        latitudeDelta: newLatitudeDelta,
+        longitudeDelta: newLongitudeDelta,
+      };
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(newRegion, 300);
+      }
+      return newRegion;
+    });
   };
 
   const handleZoomOut = () => {
-    setRegion(prev => ({
-      ...prev,
-      latitudeDelta: Math.min(10, prev.latitudeDelta * 1.3),
-      longitudeDelta: Math.min(10, prev.longitudeDelta * 1.3),
-    }));
+    setRegion(prev => {
+      const newLatitudeDelta = Math.min(180, prev.latitudeDelta * 2);
+      const newLongitudeDelta = Math.min(360, prev.longitudeDelta * 2);
+      const newRegion = {
+        ...prev,
+        latitudeDelta: newLatitudeDelta,
+        longitudeDelta: newLongitudeDelta,
+      };
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(newRegion, 300);
+      }
+      return newRegion;
+    });
   };
 
   // Mock reverse geocoding
@@ -275,33 +384,47 @@ export function MapView(props: MapViewProps) {
     setLocationName(getLocationName(region.latitude, region.longitude));
   }, [region]);
 
+  const handleMarkerPress = (photo: Photo) => {
+    const group = photoGroups.find(g => g.photos.some(p => p.id === photo.id));
+    if (group) {
+      if (group.photos.length > 1) {
+        setSelectedStack(group.photos);
+      } else if (props.onPhotoSelect) {
+        props.onPhotoSelect(group.photos[0]);
+      } else {
+        navigation.navigate('PhotoDetails' as never, { photo: group.photos[0] } as never);
+      }
+    }
+  };
+
+  const handleRegionChange = (newRegion: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => {
+    setRegion(newRegion);
+    setLocationName(getLocationName(newRegion.latitude, newRegion.longitude));
+  };
+
   return (
     <View style={styles.container}>
       <MapViewComponent
         ref={mapRef}
         style={styles.map}
         initialRegion={region}
-        onRegionChangeComplete={setRegion}
+        region={region}
+        onRegionChangeComplete={handleRegionChange}
+        showsUserLocation={false}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        toolbarEnabled={false}
       >
         {photoGroups.map((group) => (
-          <Marker
+          <MapMarker
             key={group.key}
-            coordinate={{ latitude: group.lat, longitude: group.lng }}
-            onPress={() => handleMarkerPress(group)}
-          >
-            <View style={styles.markerContainer}>
-              <Image
-                source={{ uri: group.photos[0].imageUrl }}
-                style={styles.markerImage}
-                contentFit="cover"
-              />
-              {group.photos.length > 1 && (
-                <View style={styles.markerBadge}>
-                  <Text style={styles.markerBadgeText}>{group.photos.length}</Text>
-                </View>
-              )}
-            </View>
-          </Marker>
+            photo={group.photos[0]}
+            photos={group.photos.length > 1 ? group.photos : undefined}
+            onPress={handleMarkerPress}
+            isSelected={selectedPhoto?.id === group.photos[0].id || group.photos.some(p => p.id === selectedPhoto?.id)}
+            onProfileClick={props.onProfileClick}
+            size={group.size}
+          />
         ))}
       </MapViewComponent>
 

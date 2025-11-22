@@ -1,11 +1,12 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import MapViewComponent from 'react-native-maps';
-import { Marker } from 'react-native-maps';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Image } from 'expo-image';
+import MapView from 'react-native-maps';
+import { MapMarker } from './MapMarker';
+
+const { width } = Dimensions.get('window');
 
 interface GroupMapViewProps {
   groupId?: string;
@@ -56,29 +57,120 @@ export function GroupMapView(props: GroupMapViewProps) {
     }
   };
 
+  const [region, setRegion] = useState(() => {
+    if (mockGroupPhotos.length > 0) {
+      return {
+        latitude: mockGroupPhotos[0].lat,
+        longitude: mockGroupPhotos[0].lng,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      };
+    }
+    return {
+      latitude: 48.8566,
+      longitude: 2.3522,
+      latitudeDelta: 0.0922,
+      longitudeDelta: 0.0421,
+    };
+  });
+
+  // Calculate adaptive marker base size (same logic as MapView)
+  // Referencing Leaflet implementation: Base size 100px, Stack 110px (1.1x), Selected 130px (1.3x)
+  // Note: This returns the BASE size only. Stack and selection factors are applied in MapMarker to match Leaflet's exact logic.
+  const calculateMarkerSize = (latitudeDelta: number, nearbyCount: number = 0): number => {
+    const zoomFactor = Math.max(0.001, Math.min(0.15, latitudeDelta));
+    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001);
+    // Start with 100px base (matching Leaflet), adapt down when zoomed out
+    const baseSize = 70 + (1 - normalizedZoom) * 30; // Range 70-100px (matching Leaflet's 100px base when zoomed in)
+    const densityFactor = Math.max(0.75, 1 - (nearbyCount * 0.03));
+    // Return base size only - stack and selection factors applied in MapMarker
+    const finalSize = Math.max(50, Math.min(100, baseSize * densityFactor));
+    return Math.round(finalSize);
+  };
+
+  // Adaptive clustering
+  const photoGroups = useMemo(() => {
+    if (mockGroupPhotos.length === 0) return [];
+    
+    const groups = new Map<string, Photo[]>();
+    const estimatedBaseSize = calculateMarkerSize(region.latitudeDelta, 0);
+    const estimatedMarkerSize = Math.min(estimatedBaseSize * 1.3, 130); // Max possible size
+    const screenWidthDegrees = region.longitudeDelta;
+    const pixelsPerDegree = width / screenWidthDegrees;
+    const markerSizeInDegrees = estimatedMarkerSize / pixelsPerDegree;
+    const zoomFactor = Math.max(0.001, Math.min(0.15, region.latitudeDelta));
+    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001);
+    const baseThreshold = 0.0005;
+    const zoomAdjustedThreshold = baseThreshold * (1 + normalizedZoom * 3);
+    const sizeBasedThreshold = markerSizeInDegrees * 1.5;
+    const finalThreshold = Math.max(0.0002, Math.min(0.005, Math.max(zoomAdjustedThreshold, sizeBasedThreshold)));
+    
+    mockGroupPhotos.forEach(photo => {
+      let bestGroup: [string, Photo[]] | null = null;
+      let minDistance = Infinity;
+      
+      for (const [key, group] of groups.entries()) {
+        const [lat, lng] = key.split(',').map(Number);
+        const distance = Math.sqrt(Math.pow(photo.lat - lat, 2) + Math.pow(photo.lng - lng, 2));
+        if (distance < finalThreshold && distance < minDistance) {
+          minDistance = distance;
+          bestGroup = [key, group];
+        }
+      }
+      
+      if (bestGroup) {
+        bestGroup[1].push(photo);
+      } else {
+        groups.set(`${photo.lat},${photo.lng}`, [photo]);
+      }
+    });
+    
+    const groupArray = Array.from(groups.entries());
+    return groupArray.map(([key, groupPhotos]) => {
+      const [lat, lng] = key.split(',').map(Number);
+      const nearbyCount = groupArray.filter(([otherKey]) => {
+        if (otherKey === key) return false;
+        const [otherLat, otherLng] = otherKey.split(',').map(Number);
+        const distance = Math.sqrt(Math.pow(lat - otherLat, 2) + Math.pow(lng - otherLng, 2));
+        return distance < finalThreshold * 3;
+      }).length;
+      
+      // Pass base size only - MapMarker will apply stack and selection factors like Leaflet
+      const size = calculateMarkerSize(region.latitudeDelta, nearbyCount);
+      
+      return {
+        key,
+        photos: groupPhotos,
+        lat: groupPhotos[0].lat,
+        lng: groupPhotos[0].lng,
+        size,
+      };
+    });
+  }, [region.latitudeDelta, region.longitudeDelta]);
+
   return (
     <View style={styles.container}>
-      <MapViewComponent
+      <MapView
         style={styles.map}
-        initialRegion={{
-          latitude: 48.8566,
-          longitude: 2.3522,
-          latitudeDelta: 0.5,
-          longitudeDelta: 0.5,
-        }}
+        initialRegion={region}
+        region={region}
+        onRegionChangeComplete={setRegion}
+        showsUserLocation={false}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        toolbarEnabled={false}
       >
-        {mockGroupPhotos.map((photo) => (
-          <Marker
-            key={photo.id}
-            coordinate={{ latitude: photo.lat, longitude: photo.lng }}
-            onPress={() => handlePhotoPress(photo)}
-          >
-            <View style={styles.markerContainer}>
-              <Image source={{ uri: photo.imageUrl }} style={styles.markerImage} contentFit="cover" />
-            </View>
-          </Marker>
+        {photoGroups.map((group) => (
+          <MapMarker
+            key={group.key}
+            photo={group.photos[0]}
+            photos={group.photos.length > 1 ? group.photos : undefined}
+            onPress={handlePhotoPress}
+            onProfileClick={props.onProfileClick}
+            size={group.size}
+          />
         ))}
-      </MapViewComponent>
+      </MapView>
 
       <Pressable onPress={handleBack} style={styles.backButton}>
         <Ionicons name="arrow-back" size={24} color="#111827" />
@@ -138,17 +230,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginTop: 2,
-  },
-  markerContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  markerImage: {
-    width: '100%',
-    height: '100%',
   },
 });

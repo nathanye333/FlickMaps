@@ -80,6 +80,7 @@ export const AppContext = React.createContext<{
   hasOnboarded: boolean;
   setHasOnboarded: (onboarded: boolean) => void;
   onVisibilityChange: (photoId: string, newVisibility: 'personal' | 'friends' | 'public') => void;
+  onViewOnMap: () => void;
 }>({
   selectedPhoto: null,
   setSelectedPhoto: () => {},
@@ -96,6 +97,7 @@ export const AppContext = React.createContext<{
   hasOnboarded: false,
   setHasOnboarded: () => {},
   onVisibilityChange: () => {},
+  onViewOnMap: () => {},
 });
 
 function MainTabs() {
@@ -330,6 +332,43 @@ export default function App() {
     }
   };
 
+  const handleViewOnMap = () => {
+    if (!selectedPhoto) return;
+    
+    // Determine which screen/tab to navigate to based on photo context
+    const photoVisibility = selectedPhoto.visibility;
+    
+    // If we're viewing someone else's profile, stay on their map
+    if (viewingUsername && viewingUsername !== 'You') {
+      if (navigationRef.current) {
+        navigationRef.current.navigate('UserMap' as never, { username: viewingUsername } as never);
+      }
+      return;
+    }
+    
+    // Set the appropriate tab based on photo visibility
+    if (photoVisibility === 'personal') {
+      setActiveMapTab('personal');
+    } else if (photoVisibility === 'friends') {
+      setActiveMapTab('friends');
+    } else if (photoVisibility === 'public') {
+      setActiveMapTab('global');
+    }
+    
+    // Navigate to Map tab in Main navigator
+    // Go back first to close PhotoDetails, then navigate to Map
+    if (navigationRef.current) {
+      navigationRef.current.goBack();
+      // Use setTimeout to ensure the goBack completes before navigating
+      setTimeout(() => {
+        if (navigationRef.current) {
+          navigationRef.current.navigate('Main' as never, { screen: 'Map' } as never);
+        }
+      }, 300);
+    }
+    // Photo remains selected in context so MapView can center on it
+  };
+
   const contextValue = {
     selectedPhoto,
     setSelectedPhoto,
@@ -346,6 +385,7 @@ export default function App() {
     hasOnboarded,
     setHasOnboarded,
     onVisibilityChange: handleVisibilityChange,
+    onViewOnMap: handleViewOnMap,
   };
 
   return (

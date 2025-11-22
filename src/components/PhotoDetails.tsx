@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, TextInput, Share, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
+
+// Import AppContext from App.tsx
+import { AppContext } from '../../App';
 
 interface PhotoDetailsProps {
   photo?: Photo;
@@ -21,6 +24,9 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
   const routeParams = useRoute();
   const photo = (routeParams.params as any)?.photo || (route as any)?.params?.photo;
   
+  // Get context if available
+  const context = React.useContext(AppContext);
+  
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(photo?.likes || 0);
   const [showComments, setShowComments] = useState(false);
@@ -30,6 +36,22 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   
   const isOwnPhoto = photo?.author === 'You';
+
+  // Set selectedPhoto in context when component mounts or photo changes
+  useEffect(() => {
+    if (photo && context?.setSelectedPhoto) {
+      context.setSelectedPhoto(photo);
+    }
+    // Cleanup: clear selectedPhoto when component unmounts
+    return () => {
+      if (context?.setSelectedPhoto && photo) {
+        // Only clear if this is the currently selected photo
+        if (context.selectedPhoto?.id === photo.id) {
+          // Don't clear here as we might be navigating to map
+        }
+      }
+    };
+  }, [photo]);
 
   const handleClose = () => {
     if (onClose) {
@@ -199,7 +221,7 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
         </Pressable>
       </View>
 
-      {/* Comments Section */}
+      {/* Comments Section - shown above View on Map button */}
       {showComments && (
         <View style={styles.commentsSection}>
           <View style={styles.commentsHeader}>
@@ -241,6 +263,47 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
           </View>
         </View>
       )}
+
+      {/* View on Map Button - always at bottom */}
+      <Pressable 
+        style={styles.viewOnMapButton} 
+        onPress={() => {
+          if (!photo) return;
+          
+          // Ensure photo is set in context
+          if (context?.setSelectedPhoto) {
+            context.setSelectedPhoto(photo);
+          }
+          
+          if (onViewOnMap) {
+            onViewOnMap();
+          } else if (context?.onViewOnMap) {
+            // Call the context's onViewOnMap handler
+            context.onViewOnMap();
+          } else {
+            // Fallback behavior: set appropriate map tab and navigate to Map
+            if (context?.setActiveMapTab) {
+              const tab = photo.visibility === 'personal' ? 'personal' 
+                : photo.visibility === 'friends' ? 'friends' 
+                : 'global';
+              context.setActiveMapTab(tab);
+            }
+            // Navigate to Map tab
+            try {
+              nav.goBack();
+              setTimeout(() => {
+                (nav as any).navigate('Main', { screen: 'Map' });
+              }, 300);
+            } catch (e) {
+              // Fallback: just go back
+              nav.goBack();
+            }
+          }
+        }}
+      >
+        <Ionicons name="map" size={20} color="white" />
+        <Text style={styles.viewOnMapText}>View on Map</Text>
+      </Pressable>
     </View>
   );
 }
@@ -443,5 +506,21 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     padding: 8,
+  },
+  viewOnMapButton: {
+    backgroundColor: '#06b6d4',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  viewOnMapText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

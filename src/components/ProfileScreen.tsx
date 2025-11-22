@@ -41,8 +41,18 @@ export function ProfileScreen({ onPhotoSelect, onViewOnMap, onSettings, navigati
       <Image
         source={{ uri: item.imageUrl }}
         style={styles.photoImage}
-        resizeMode="cover"
+        contentFit="cover"
       />
+      
+      {/* Profile Picture in Top-Left Corner - curved square style */}
+      <View style={styles.avatarContainer}>
+        <Image
+          source={{ uri: item.authorAvatar }}
+          style={styles.avatarImage}
+          contentFit="cover"
+        />
+      </View>
+      
       {item.likes > 0 && (
         <View style={styles.photoLikes}>
           <Ionicons name="heart" size={12} color="white" />
@@ -286,16 +296,38 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     margin: 4,
-    borderRadius: 16,
+    borderRadius: 12, // Curved square - matching PhotoStackModal
     overflow: 'hidden',
+    backgroundColor: '#f3f4f6',
   },
   photoImage: {
     width: '100%',
     height: '100%',
   },
-  photoLikes: {
+  avatarContainer: {
     position: 'absolute',
     top: 8,
+    left: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoLikes: {
+    position: 'absolute',
+    bottom: 8,
     right: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 12,
