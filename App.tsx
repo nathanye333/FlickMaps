@@ -83,6 +83,8 @@ export const AppContext = React.createContext<{
   setHasOnboarded: (onboarded: boolean) => void;
   onVisibilityChange: (photoId: string, newVisibility: 'personal' | 'friends' | 'public') => void;
   onViewOnMap: () => void;
+  isDailyChallengeActive: boolean;
+  setIsDailyChallengeActive: (active: boolean) => void;
 }>({
   selectedPhoto: null,
   setSelectedPhoto: () => {},
@@ -100,6 +102,8 @@ export const AppContext = React.createContext<{
   setHasOnboarded: () => {},
   onVisibilityChange: () => {},
   onViewOnMap: () => {},
+  isDailyChallengeActive: false,
+  setIsDailyChallengeActive: () => {},
 });
 
 function MainTabs() {
@@ -225,7 +229,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
           style={customTabBarStyles.captureButton}
         >
           <LinearGradient
-            colors={['#06b6d4', '#3b82f6']}
+            colors={context?.isDailyChallengeActive ? ['#fb923c', '#f97316'] : ['#06b6d4', '#3b82f6']}
             style={customTabBarStyles.captureButtonInner}
           >
             <Ionicons name="camera" size={24} color="white" />
@@ -333,6 +337,8 @@ export default function App() {
   const [viewingUsername, setViewingUsername] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [activeMapTab, setActiveMapTab] = useState<MapTab>('personal');
+  // Daily challenge is active by default to show it's "live"
+  const [isDailyChallengeActive, setIsDailyChallengeActive] = useState<boolean>(true);
 
   const handleVisibilityChange = (photoId: string, newVisibility: 'personal' | 'friends' | 'public') => {
     updatePhotoVisibility(photoId, newVisibility);
@@ -398,6 +404,8 @@ export default function App() {
     setHasOnboarded,
     onVisibilityChange: handleVisibilityChange,
     onViewOnMap: handleViewOnMap,
+    isDailyChallengeActive,
+    setIsDailyChallengeActive,
   };
 
   return (

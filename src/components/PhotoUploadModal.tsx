@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { AppContext } from '../../App';
 
 interface PhotoUploadModalProps {
   onClose: () => void;
@@ -20,9 +21,12 @@ export interface UploadedPhoto {
 }
 
 export function PhotoUploadModal({ onClose, onPhotosUploaded, visible }: PhotoUploadModalProps) {
+  const context = React.useContext(AppContext);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [processingStatus, setProcessingStatus] = useState<{ [key: string]: 'processing' | 'success' | 'error' }>({});
   const [errorMessages, setErrorMessages] = useState<{ [key: string]: string }>({});
+  const [submitToDailyChallenge, setSubmitToDailyChallenge] = useState(false);
+  const [visibility, setVisibility] = useState<'personal' | 'friends' | 'public'>('friends');
 
   const pickImages = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -106,6 +110,50 @@ export function PhotoUploadModal({ onClose, onPhotosUploaded, visible }: PhotoUp
                   </View>
                 ))}
               </ScrollView>
+            )}
+
+            {/* Visibility Options */}
+            {selectedImages.length > 0 && (
+              <View style={styles.visibilitySection}>
+                <Text style={styles.visibilityLabel}>Who can see these photos?</Text>
+                <View style={styles.visibilityOptions}>
+                  <Pressable
+                    onPress={() => setVisibility('personal')}
+                    style={[styles.visibilityButton, visibility === 'personal' && styles.visibilityButtonActive]}
+                  >
+                    <Text style={[styles.visibilityButtonText, visibility === 'personal' && styles.visibilityButtonTextActive]}>Just Me</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setVisibility('friends')}
+                    style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
+                  >
+                    <Text style={[styles.visibilityButtonText, visibility === 'friends' && styles.visibilityButtonTextActive]}>Friends</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setVisibility('public')}
+                    style={[styles.visibilityButton, visibility === 'public' && styles.visibilityButtonActive]}
+                  >
+                    <Text style={[styles.visibilityButtonText, visibility === 'public' && styles.visibilityButtonTextActive]}>Public</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+            {/* Daily Challenge Submission */}
+            {context?.isDailyChallengeActive && selectedImages.length > 0 && (
+              <View style={styles.dailyChallengeSection}>
+                <Pressable
+                  onPress={() => setSubmitToDailyChallenge(!submitToDailyChallenge)}
+                  style={[styles.dailyChallengeOption, submitToDailyChallenge && styles.dailyChallengeOptionActive]}
+                >
+                  <View style={[styles.dailyChallengeCheckbox, submitToDailyChallenge && styles.dailyChallengeCheckboxActive]}>
+                    {submitToDailyChallenge && (
+                      <Ionicons name="checkmark" size={16} color="white" />
+                    )}
+                  </View>
+                  <Text style={styles.dailyChallengeText}>Submit to Daily Challenge</Text>
+                </Pressable>
+              </View>
             )}
           </View>
 
@@ -227,5 +275,76 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  visibilitySection: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  visibilityLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  visibilityOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  visibilityButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+    alignItems: 'center',
+  },
+  visibilityButtonActive: {
+    borderColor: '#06b6d4',
+    backgroundColor: '#ecfeff',
+  },
+  visibilityButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  visibilityButtonTextActive: {
+    color: '#06b6d4',
+  },
+  dailyChallengeSection: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  dailyChallengeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  dailyChallengeOptionActive: {
+    borderColor: '#fb923c',
+    backgroundColor: '#fff7ed',
+  },
+  dailyChallengeCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#fb923c',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dailyChallengeCheckboxActive: {
+    backgroundColor: '#fb923c',
+  },
+  dailyChallengeText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
   },
 });

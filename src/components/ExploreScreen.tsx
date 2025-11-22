@@ -151,17 +151,20 @@ export function ExploreScreen({ onPhotoSelect, onProfileClick, onChallengeClick,
           </>
         ) : (
           <View style={styles.challengesSection}>
-            <Text style={styles.challengeTitle}>Daily Challenge</Text>
+            <Text style={styles.challengeTitle}>Golden Hour Moments</Text>
             <Text style={styles.challengeDescription}>
-              Capture the best sunset photo today!
+              Global daily challenge photos ranked by likes
             </Text>
-            <Pressable
-              onPress={onChallengeClick}
-              style={styles.challengeButton}
-            >
-              <Ionicons name="camera" size={20} color="white" />
-              <Text style={styles.challengeButtonText}>Join Challenge</Text>
-            </Pressable>
+            <FlatList
+              data={mockDailyChallengeSubmissions
+                .map(submission => submission.photo)
+                .sort((a, b) => b.likes - a.likes)}
+              renderItem={renderPhoto}
+              numColumns={2}
+              scrollEnabled={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.photoGrid}
+            />
           </View>
         )}
       </View>

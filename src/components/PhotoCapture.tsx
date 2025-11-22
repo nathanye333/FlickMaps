@@ -5,6 +5,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppContext } from '../../App';
 
 interface PhotoCaptureProps {
   onComplete: () => void;
@@ -15,9 +16,11 @@ interface PhotoCaptureProps {
 
 export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
   const insets = useSafeAreaInsets();
+  const context = React.useContext(AppContext);
   const [step, setStep] = useState<'camera' | 'details'>('camera');
   const [caption, setCaption] = useState('');
   const [visibility, setVisibility] = useState<'personal' | 'friends' | 'public'>('friends');
+  const [submitToDailyChallenge, setSubmitToDailyChallenge] = useState(false);
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [permission, requestPermission] = useCameraPermissions();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -45,6 +48,12 @@ export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
 
   const handlePost = () => {
     // In a real app, this would upload the photo
+    // If submitting to daily challenge, handle that here
+    if (submitToDailyChallenge && context?.setIsDailyChallengeActive) {
+      // Keep daily challenge active after submission
+      // In a real app, this would submit the photo to the challenge
+      console.log('Submitting to daily challenge with visibility:', visibility);
+    }
     onComplete();
   };
 
@@ -190,6 +199,29 @@ export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
             </Pressable>
           </View>
         </View>
+
+        {/* Daily Challenge Submission */}
+        {context?.isDailyChallengeActive && (
+          <View style={styles.section}>
+            <Pressable
+              onPress={() => setSubmitToDailyChallenge(!submitToDailyChallenge)}
+              style={[
+                styles.dailyChallengeOption,
+                submitToDailyChallenge && styles.dailyChallengeOptionActive
+              ]}
+            >
+              <View style={styles.dailyChallengeCheckbox}>
+                {submitToDailyChallenge && (
+                  <Ionicons name="checkmark" size={16} color="white" />
+                )}
+              </View>
+              <View style={styles.visibilityTextContainer}>
+                <Text style={styles.visibilityTitle}>Submit to Daily Challenge</Text>
+                <Text style={styles.visibilitySubtitle}>Enter this photo in today's challenge</Text>
+              </View>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -397,5 +429,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 2,
+  },
+  dailyChallengeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  dailyChallengeOptionActive: {
+    borderColor: '#fb923c',
+    backgroundColor: '#fff7ed',
+  },
+  dailyChallengeCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#fb923c',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dailyChallengeCheckboxActive: {
+    backgroundColor: '#fb923c',
   },
 });

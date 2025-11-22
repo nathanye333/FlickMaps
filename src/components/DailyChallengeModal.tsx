@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -33,6 +33,11 @@ export function DailyChallengeModal({
 }: DailyChallengeModalProps) {
   const [selectedSubmission, setSelectedSubmission] = useState<string | null>(null);
   
+  // Debug: Log submissions to verify data is being passed
+  React.useEffect(() => {
+    console.log('Daily Challenge Submissions:', submissions.length, submissions);
+  }, [submissions]);
+  
   // Sort submissions by votes
   const sortedSubmissions = [...submissions].sort((a, b) => b.votes - a.votes);
   const winner = sortedSubmissions[0];
@@ -54,12 +59,6 @@ export function DailyChallengeModal({
             
             <View style={styles.headerContent}>
               <View style={styles.headerTop}>
-                <LinearGradient
-                  colors={['#fb923c', '#ec4899']}
-                  style={styles.iconContainer}
-                >
-                  <Ionicons name="camera" size={20} color="white" />
-                </LinearGradient>
                 <View>
                   <Text style={styles.headerTitle}>Daily Challenge</Text>
                   <View style={styles.headerMeta}>
@@ -80,7 +79,7 @@ export function DailyChallengeModal({
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             <View style={styles.submissionsHeader}>
               <Text style={styles.submissionsCount}>
-                {submissions.length} Friend{submissions.length !== 1 ? 's' : ''} Competing
+                {submissions.length} Submission{submissions.length !== 1 ? 's' : ''} Competing
               </Text>
               {winner && (
                 <View style={styles.leadingBadge}>

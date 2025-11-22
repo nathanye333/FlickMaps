@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Modal, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Photo, MapTab } from '../App';
-import { mockPersonalPhotos, mockFriendsPhotos, mockGlobalPhotos, getPersonalPhotosForTab } from '../data/mockData';
+import { mockPersonalPhotos, mockFriendsPhotos, mockGlobalPhotos, getPersonalPhotosForTab, mockDailyChallengeSubmissions } from '../data/mockData';
 import { AppContext } from '../../App';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { TimelineScrubber } from './TimelineScrubber';
 import { PhotoStackModal } from './PhotoStackModal';
@@ -13,6 +13,7 @@ import { PhotoUploadModal, UploadedPhoto } from './PhotoUploadModal';
 import { PhotoPin } from './PhotoPin';
 import MapViewComponent from 'react-native-maps';
 import { MapMarker } from './MapMarker';
+import * as Location from 'expo-location';
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,12 +39,49 @@ export function MapView(props: MapViewProps) {
   const mapRef = useRef<MapViewComponent>(null);
   
   const activeMapTab = context?.activeMapTab || props.activeMapTab || 'personal';
-  const setActiveMapTab = context?.setActiveMapTab || props.setActiveMapTab || (() => {});
+  const setActiveMapTabContext = context?.setActiveMapTab;
+  const setActiveMapTabProps = props.setActiveMapTab;
   const selectedPhoto = context?.selectedPhoto || props.selectedPhoto;
+  
+  // Local state to force re-render when tab changes
+  const [localTab, setLocalTab] = useState<MapTab>(activeMapTab);
+  
+  // Use local tab for rendering to ensure immediate updates
+  const currentTab = localTab;
+  
+  // Sync local tab with context/props when they change
+  useEffect(() => {
+    if (activeMapTab !== localTab) {
+      setLocalTab(activeMapTab);
+    }
+  }, [activeMapTab]);
+
+  // Sync tab state when screen comes into focus (fixes navigation stack issues)
+  useFocusEffect(
+    React.useCallback(() => {
+      // When returning to this screen, sync the tab state
+      const contextTab = context?.activeMapTab;
+      const propsTab = props.activeMapTab;
+      const currentContextTab = contextTab || propsTab || 'personal';
+      
+      if (currentContextTab !== localTab) {
+        setLocalTab(currentContextTab);
+      }
+      // Don't reset currentDate - preserve the timeline position
+      // The timeline scrubber will maintain its own state
+    }, [context?.activeMapTab, props.activeMapTab, localTab])
+  );
   
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('weekly');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  // Initialize to a date that matches the mock photos (November 2025)
+  // This ensures photos are visible by default
+  const [currentDate, setCurrentDate] = useState<Date>(() => {
+    // Use the most recent photo date or current date, whichever makes sense
+    // For mock data from Nov 2025, initialize to that timeframe
+    const defaultDate = new Date('2025-11-20');
+    return defaultDate;
+  });
   const [timelineResetTrigger, setTimelineResetTrigger] = useState(0);
   const [region, setRegion] = useState({
     latitude: 37.7749,
@@ -59,7 +97,7 @@ export function MapView(props: MapViewProps) {
 
   const getPhotosForTab = (): Photo[] => {
     let photos: Photo[] = [];
-    switch (activeMapTab) {
+    switch (currentTab) {
       case 'personal':
         photos = mockPersonalPhotos;
         break;
@@ -119,9 +157,9 @@ export function MapView(props: MapViewProps) {
     );
   };
 
-  const photos = useMemo(() => getPhotosForTab(), [activeMapTab, timelineFilter, selectedCategory, currentDate]);
+  const photos = useMemo(() => getPhotosForTab(), [currentTab, timelineFilter, selectedCategory, currentDate]);
   const allPhotos = useMemo(() => {
-    switch (activeMapTab) {
+    switch (currentTab) {
       case 'personal':
         return mockPersonalPhotos;
       case 'friends':
@@ -256,11 +294,11 @@ export function MapView(props: MapViewProps) {
       setRegion(newRegion);
       // Set the appropriate tab based on photo visibility
       if (selectedPhoto.visibility === 'personal') {
-        setActiveMapTab('personal');
+        handleTabChange('personal');
       } else if (selectedPhoto.visibility === 'friends') {
-        setActiveMapTab('friends');
+        handleTabChange('friends');
       } else if (selectedPhoto.visibility === 'public') {
-        setActiveMapTab('global');
+        handleTabChange('global');
       }
       // Center map on photo
       setTimeout(() => {
@@ -308,18 +346,86 @@ export function MapView(props: MapViewProps) {
   };
 
   const handleTabChange = (tab: MapTab) => {
-    setActiveMapTab(tab);
+    // Update both context and props if available
+    if (setActiveMapTabContext) {
+      setActiveMapTabContext(tab);
+    }
+    if (setActiveMapTabProps) {
+      setActiveMapTabProps(tab);
+    }
+    // Update local state to force immediate re-render
+    setLocalTab(tab);
   };
 
   const handleTimelineFilterChange = (filter: TimelineFilter) => {
     setTimelineFilter(filter);
     setTimelineResetTrigger(prev => prev + 1);
     setCurrentDate(new Date());
-    setActiveMapTab(activeMapTab); // Trigger re-render
+    // Force re-render by updating local tab state
+    setLocalTab(prev => prev);
   };
 
   const handleTimeChange = (date: Date) => {
+    // Update the date - this is called by TimelineScrubber when user interacts
     setCurrentDate(date);
+  };
+  
+  // Track if this is the first render to prevent timeline from overriding initial date
+  const isFirstRender = useRef(true);
+  
+  useEffect(() => {
+    // On first render, set a date that matches the photos (November 2025)
+    // This ensures photos are visible by default
+    if (isFirstRender.current) {
+      const photoDate = new Date('2025-11-20');
+      setCurrentDate(photoDate);
+      isFirstRender.current = false;
+    }
+  }, []);
+
+  // Handle recentering to user's current location
+  const handleRecenter = async () => {
+    try {
+      // Request location permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location Permission',
+          'Please enable location permissions to recenter the map to your current location.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = location.coords;
+
+      // Create new region centered on user's location
+      const newRegion = {
+        latitude,
+        longitude,
+        latitudeDelta: 0.01, // Zoom level - adjust as needed
+        longitudeDelta: 0.01,
+      };
+
+      // Update region state
+      setRegion(newRegion);
+
+      // Animate map to new location
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(newRegion, 1000);
+      }
+    } catch (error) {
+      Alert.alert(
+        'Location Error',
+        'Unable to get your current location. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const handleZoomIn = () => {
@@ -436,42 +542,42 @@ export function MapView(props: MapViewProps) {
           <View style={styles.tabButtons}>
             <Pressable
               onPress={() => handleTabChange('personal')}
-              style={[styles.tab, activeMapTab === 'personal' && styles.tabActive]}
+              style={[styles.tab, currentTab === 'personal' && styles.tabActive]}
             >
               <Ionicons 
                 name="person" 
                 size={14} 
-                color={activeMapTab === 'personal' ? 'white' : '#6b7280'} 
+                color={currentTab === 'personal' ? 'white' : '#6b7280'} 
               />
-              <Text style={[styles.tabText, activeMapTab === 'personal' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, currentTab === 'personal' && styles.tabTextActive]}>
                 Personal
               </Text>
             </Pressable>
             
             <Pressable
               onPress={() => handleTabChange('friends')}
-              style={[styles.tab, activeMapTab === 'friends' && styles.tabActive]}
+              style={[styles.tab, currentTab === 'friends' && styles.tabActive]}
             >
               <Ionicons 
                 name="people" 
                 size={14} 
-                color={activeMapTab === 'friends' ? 'white' : '#6b7280'} 
+                color={currentTab === 'friends' ? 'white' : '#6b7280'} 
               />
-              <Text style={[styles.tabText, activeMapTab === 'friends' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, currentTab === 'friends' && styles.tabTextActive]}>
                 Friends
               </Text>
             </Pressable>
             
             <Pressable
               onPress={() => handleTabChange('global')}
-              style={[styles.tab, activeMapTab === 'global' && styles.tabActive]}
+              style={[styles.tab, currentTab === 'global' && styles.tabActive]}
             >
               <Ionicons 
                 name="globe" 
                 size={14} 
-                color={activeMapTab === 'global' ? 'white' : '#6b7280'} 
+                color={currentTab === 'global' ? 'white' : '#6b7280'} 
               />
-              <Text style={[styles.tabText, activeMapTab === 'global' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, currentTab === 'global' && styles.tabTextActive]}>
                 Global
               </Text>
             </Pressable>
@@ -543,6 +649,13 @@ export function MapView(props: MapViewProps) {
 
       {/* Zoom Controls */}
       <View style={styles.zoomControls}>
+          {/* Recenter Button */}
+          <Pressable
+            style={styles.recenterButton}
+            onPress={handleRecenter}
+          >
+            <Ionicons name="locate" size={22} color="#06b6d4" />
+          </Pressable>
           <Pressable
             style={styles.zoomButton}
             onPress={handleZoomIn}
@@ -558,10 +671,16 @@ export function MapView(props: MapViewProps) {
         </View>
 
       {/* Daily Challenge Button - Friends Tab */}
-      {activeMapTab === 'friends' && !isMapExpanded && (
+      {currentTab === 'friends' && !isMapExpanded && (
         <Pressable
           style={styles.dailyChallengeButton}
-          onPress={() => setShowDailyChallengeModal(true)}
+          onPress={() => {
+            setShowDailyChallengeModal(true);
+            // Activate daily challenge when modal opens
+            if (context?.setIsDailyChallengeActive) {
+              context.setIsDailyChallengeActive(true);
+            }
+          }}
         >
           <View style={styles.dailyChallengeButtonInner}>
             <Ionicons name="camera" size={24} color="white" />
@@ -573,10 +692,16 @@ export function MapView(props: MapViewProps) {
       )}
 
       {/* Daily Challenge Button - Global Tab */}
-      {activeMapTab === 'global' && !isMapExpanded && (
+      {currentTab === 'global' && !isMapExpanded && (
         <Pressable
           style={styles.dailyChallengeButton}
-          onPress={() => setShowDailyChallengeModal(true)}
+          onPress={() => {
+            setShowDailyChallengeModal(true);
+            // Activate daily challenge when modal opens
+            if (context?.setIsDailyChallengeActive) {
+              context.setIsDailyChallengeActive(true);
+            }
+          }}
         >
           <View style={styles.dailyChallengeButtonInner}>
             <Ionicons name="camera" size={24} color="white" />
@@ -606,13 +731,17 @@ export function MapView(props: MapViewProps) {
       {/* Daily Challenge Modal */}
       {showDailyChallengeModal && (
         <DailyChallengeModal
-          onClose={() => setShowDailyChallengeModal(false)}
-          submissions={[]}
+          onClose={() => {
+            setShowDailyChallengeModal(false);
+            // Keep daily challenge active even when modal closes - challenge is still live
+            // Don't deactivate here, only deactivate when user explicitly opts out
+          }}
+          submissions={mockDailyChallengeSubmissions}
           onVote={(submissionId: string) => {
             // Handle vote
             console.log('Voted for submission:', submissionId);
           }}
-          challengeTitle="Golden Hour Glow"
+          challengeTitle="Golden Hour Moments"
           challengeDescription="Capture the perfect golden hour moment with warm, glowing light"
           endsIn="in 4 hours"
         />
@@ -827,6 +956,19 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: 8,
     zIndex: 10,
+  },
+  recenterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   zoomButton: {
     width: 40,
