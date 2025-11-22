@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getUserPhotos } from '../data/mockData';
+import { getUserPhotos, canViewProfile, getUserProfile } from '../data/mockData';
 import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
 import { MapMarker } from './MapMarker';
 import { PhotoStackModal } from './PhotoStackModal';
@@ -22,9 +23,12 @@ interface UserMapScreenProps {
 export function UserMapScreen(props: UserMapScreenProps) {
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const username = (route.params as any)?.username || props.username || 'You';
   
-  const userPhotos = getUserPhotos(username);
+  const canView = username === 'You' || canViewProfile(username);
+  const userPhotos = canView ? getUserPhotos(username) : [];
+  const profile = getUserProfile(username);
 
   const handleBack = () => {
     if (props.onBack) {
@@ -164,43 +168,63 @@ export function UserMapScreen(props: UserMapScreenProps) {
       } else if (props.onPhotoSelect) {
         props.onPhotoSelect(group.photos[0]);
       } else {
-        navigation.navigate('PhotoDetails' as never, { photo: group.photos[0] } as never);
+        (navigation as any).navigate('PhotoDetails', { photo: group.photos[0] });
       }
     }
   };
 
   return (
     <View style={styles.container}>
-      <MapView
-        style={styles.map}
-        initialRegion={region}
-        region={region}
-        onRegionChangeComplete={setRegion}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
-      >
-        {photoGroups.map((group) => (
-          <MapMarker
-            key={group.key}
-            photo={group.photos[0]}
-            photos={group.photos.length > 1 ? group.photos : undefined}
-            onPress={handlePhotoPress}
-            onProfileClick={props.onProfileClick}
-            size={group.size}
-          />
-        ))}
-      </MapView>
+      {canView ? (
+        <>
+          <MapView
+            style={styles.map}
+            initialRegion={region}
+            region={region}
+            onRegionChangeComplete={setRegion}
+            showsUserLocation={false}
+            showsMyLocationButton={false}
+            showsCompass={false}
+            toolbarEnabled={false}
+          >
+            {photoGroups.map((group) => (
+              <MapMarker
+                key={group.key}
+                photo={group.photos[0]}
+                photos={group.photos.length > 1 ? group.photos : undefined}
+                onPress={handlePhotoPress}
+                onProfileClick={props.onProfileClick}
+                size={group.size}
+              />
+            ))}
+          </MapView>
 
-      <Pressable onPress={handleBack} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={24} color="#111827" />
-      </Pressable>
+          <Pressable onPress={handleBack} style={[styles.backButton, { top: insets.top + 16 }]}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </Pressable>
 
-      <View style={styles.header}>
-        <Text style={styles.title}>{username}'s Map</Text>
-        <Text style={styles.subtitle}>{userPhotos.length} photos</Text>
-      </View>
+          <View style={[styles.header, { top: insets.top + 16 }]}>
+            <Text style={styles.title}>{username}'s Map</Text>
+            <Text style={styles.subtitle}>{userPhotos.length} photos</Text>
+          </View>
+        </>
+      ) : (
+        <>
+          <Pressable onPress={handleBack} style={[styles.backButton, { top: insets.top + 16 }]}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </Pressable>
+
+          <View style={styles.privateContainer}>
+            <View style={styles.privateContent}>
+              <Ionicons name="lock-closed" size={64} color="#9ca3af" />
+              <Text style={styles.privateTitle}>Private Profile</Text>
+              <Text style={styles.privateMessage}>
+                {username}'s profile is private. Send a friend request to view their map.
+              </Text>
+            </View>
+          </View>
+        </>
+      )}
 
       {/* Photo Stack Modal */}
       {selectedStack && (
@@ -212,7 +236,7 @@ export function UserMapScreen(props: UserMapScreenProps) {
             if (props.onPhotoSelect) {
               props.onPhotoSelect(photo);
             } else {
-              navigation.navigate('PhotoDetails' as never, { photo } as never);
+              (navigation as any).navigate('PhotoDetails', { photo });
             }
           }}
         />
@@ -267,5 +291,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginTop: 2,
+  },
+  privateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  privateContent: {
+    alignItems: 'center',
+    maxWidth: 300,
+  },
+  privateTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  privateMessage: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
   },
 });

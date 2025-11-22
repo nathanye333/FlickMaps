@@ -430,7 +430,7 @@ export function MapView(props: MapViewProps) {
         </Text>
       </View>
 
-      {/* Tab Switcher with Groups Button - Centered horizontally */}
+      {/* Tab Switcher with Groups Button - Tabs centered, shifted left */}
       <View style={styles.tabContainer}>
         <View style={styles.tabButtonsContainer}>
           <View style={styles.tabButtons}>
@@ -478,14 +478,17 @@ export function MapView(props: MapViewProps) {
           </View>
           
           {/* Groups Button */}
-          {props.onGroupsClick && (
-            <Pressable
-              onPress={props.onGroupsClick}
-              style={styles.groupsButton}
-            >
-              <Text style={styles.groupsButtonText}>👥</Text>
-            </Pressable>
-          )}
+          <Pressable
+            onPress={props.onGroupsClick || (() => {
+              // Fallback: try to navigate using context or navigation
+              if (navigation) {
+                (navigation as any).getParent()?.navigate('GroupMaps');
+              }
+            })}
+            style={styles.groupsButton}
+          >
+            <Ionicons name="people" size={20} color="#06b6d4" />
+          </Pressable>
         </View>
       </View>
 
@@ -696,11 +699,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 30,
+    paddingHorizontal: 16,
   },
   tabButtonsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    // Shift right by half the groups button width + gap to keep tabs visually centered
+    transform: [{ translateX: 24 }], // Half of groups button width (40/2) + gap (8/2) = 20 + 4 = 24
   },
   tabButtons: {
     flexDirection: 'row',
@@ -746,9 +752,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-  },
-  groupsButtonText: {
-    fontSize: 18,
+    marginLeft: 8,
   },
   timelineWrapper: {
     position: 'absolute',

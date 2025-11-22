@@ -3,9 +3,13 @@ import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
 import { MapMarker } from './MapMarker';
 import { PhotoStackModal } from './PhotoStackModal';
+import { CameraOptionsModal } from './CameraOptionsModal';
+import { PhotoUploadModal, UploadedPhoto } from './PhotoUploadModal';
+import { getGroupPhotos, getGroupById } from '../data/mockData';
 
 const { width, height } = Dimensions.get('window');
 
@@ -19,28 +23,18 @@ interface GroupMapViewProps {
   route?: any;
 }
 
-const mockGroupPhotos: Photo[] = [
-  {
-    id: 'group-1',
-    imageUrl: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=400',
-    lat: 48.8566,
-    lng: 2.3522,
-    location: 'Paris, France',
-    caption: 'Eiffel Tower at sunset',
-    author: 'Sarah Chen',
-    authorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
-    timestamp: new Date('2025-11-15'),
-    likes: 24,
-    visibility: 'friends',
-    category: 'Travel'
-  },
-];
-
 export function GroupMapView(props: GroupMapViewProps) {
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const groupId = (route.params as any)?.groupId || props.groupId || '';
-  const groupName = (route.params as any)?.groupName || props.groupName || 'Group';
+  const group = getGroupById(groupId);
+  const groupName = group?.name || (route.params as any)?.groupName || props.groupName || 'Group';
+  
+  // Get photos for this group
+  const groupPhotos = useMemo(() => {
+    return getGroupPhotos(groupId);
+  }, [groupId]);
 
   const handleBack = () => {
     if (props.onBack) {
@@ -51,14 +45,26 @@ export function GroupMapView(props: GroupMapViewProps) {
   };
 
   const [selectedStack, setSelectedStack] = useState<Photo[] | null>(null);
+  const [showCameraOptions, setShowCameraOptions] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   const [region, setRegion] = useState(() => {
-    if (mockGroupPhotos.length > 0) {
+    if (groupPhotos.length > 0) {
+      // Calculate center of all photos
+      const avgLat = groupPhotos.reduce((sum, p) => sum + p.lat, 0) / groupPhotos.length;
+      const avgLng = groupPhotos.reduce((sum, p) => sum + p.lng, 0) / groupPhotos.length;
+      
+      // Calculate bounds
+      const lats = groupPhotos.map(p => p.lat);
+      const lngs = groupPhotos.map(p => p.lng);
+      const latDelta = Math.max(...lats) - Math.min(...lats);
+      const lngDelta = Math.max(...lngs) - Math.min(...lngs);
+      
       return {
-        latitude: mockGroupPhotos[0].lat,
-        longitude: mockGroupPhotos[0].lng,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
+        latitude: avgLat,
+        longitude: avgLng,
+        latitudeDelta: Math.max(latDelta * 1.5, 0.0922),
+        longitudeDelta: Math.max(lngDelta * 1.5, 0.0421),
       };
     }
     return {
@@ -83,7 +89,7 @@ export function GroupMapView(props: GroupMapViewProps) {
   // Stacking: detect if photos are overlapping in pixels on screen
   // Use pixel-based overlap detection instead of degrees threshold
   const photoGroups = useMemo(() => {
-    if (mockGroupPhotos.length === 0) return [];
+    if (groupPhotos.length === 0) return [];
     
     const groups = new Map<string, Photo[]>();
     
@@ -101,7 +107,7 @@ export function GroupMapView(props: GroupMapViewProps) {
     const overlapThresholdPixels = estimatedSize * 0.8;
     
     // Group photos that would visually overlap in pixels
-    mockGroupPhotos.forEach(photo => {
+    groupPhotos.forEach(photo => {
       let bestGroup: [string, Photo[]] | null = null;
       let minDistancePixels = Infinity;
       
@@ -168,7 +174,7 @@ export function GroupMapView(props: GroupMapViewProps) {
         size,
       };
     });
-  }, [region.latitudeDelta, region.longitudeDelta, width, height]);
+  }, [groupPhotos, region.latitudeDelta, region.longitudeDelta, width, height]);
 
   const handlePhotoPress = (photo: Photo) => {
     // Find the group this photo belongs to
@@ -180,7 +186,7 @@ export function GroupMapView(props: GroupMapViewProps) {
       } else if (props.onPhotoSelect) {
         props.onPhotoSelect(group.photos[0]);
       } else {
-        navigation.navigate('PhotoDetails' as never, { photo: group.photos[0] } as never);
+        (navigation as any).navigate('PhotoDetails', { photo: group.photos[0] });
       }
     }
   };
@@ -209,14 +215,22 @@ export function GroupMapView(props: GroupMapViewProps) {
         ))}
       </MapView>
 
-      <Pressable onPress={handleBack} style={styles.backButton}>
+      <Pressable onPress={handleBack} style={[styles.backButton, { top: insets.top + 16 }]}>
         <Ionicons name="arrow-back" size={24} color="#111827" />
       </Pressable>
 
-      <View style={styles.header}>
+      <View style={[styles.header, { top: insets.top + 16 }]}>
         <Text style={styles.title}>{groupName}</Text>
-        <Text style={styles.subtitle}>{mockGroupPhotos.length} photos</Text>
+        <Text style={styles.subtitle}>{groupPhotos.length} photos</Text>
       </View>
+
+      {/* Camera Button */}
+      <Pressable
+        onPress={() => setShowCameraOptions(true)}
+        style={[styles.cameraButton, { bottom: insets.bottom + 80 }]}
+      >
+        <Ionicons name="camera" size={24} color="white" />
+      </Pressable>
 
       {/* Photo Stack Modal */}
       {selectedStack && (
@@ -228,11 +242,37 @@ export function GroupMapView(props: GroupMapViewProps) {
             if (props.onPhotoSelect) {
               props.onPhotoSelect(photo);
             } else {
-              navigation.navigate('PhotoDetails' as never, { photo } as never);
+              (navigation as any).navigate('PhotoDetails', { photo });
             }
           }}
         />
       )}
+
+      {/* Camera Options Modal */}
+      <CameraOptionsModal
+        visible={showCameraOptions}
+        onTakePhoto={() => {
+          setShowCameraOptions(false);
+          // Navigate to capture screen
+          (navigation as any).navigate('Capture');
+        }}
+        onUploadPhoto={() => {
+          setShowCameraOptions(false);
+          setShowUploadModal(true);
+        }}
+        onClose={() => setShowCameraOptions(false)}
+      />
+
+      {/* Photo Upload Modal */}
+      <PhotoUploadModal
+        visible={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onPhotosUploaded={(photos: UploadedPhoto[]) => {
+          setShowUploadModal(false);
+          // Handle uploaded photos - in a real app, these would be added to the group
+          console.log('Photos uploaded to group:', photos);
+        }}
+      />
     </View>
   );
 }
@@ -283,5 +323,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginTop: 2,
+  },
+  cameraButton: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#06b6d4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
 });

@@ -105,6 +105,16 @@ export const AppContext = React.createContext<{
 function MainTabs() {
   const context = React.useContext(AppContext);
   
+  // Wrapper component to pass onGroupsClick prop to MapView
+  const MapViewWrapper = ({ navigation }: any) => {
+    const handleGroupsClick = () => {
+      // Navigate to GroupMaps in the parent Stack navigator
+      navigation.getParent()?.navigate('GroupMaps');
+    };
+    
+    return <MapView onGroupsClick={handleGroupsClick} />;
+  };
+  
   return (
     <Tab.Navigator
       screenOptions={{
@@ -122,7 +132,7 @@ function MainTabs() {
     >
       <Tab.Screen 
         name="Map" 
-        component={MapView}
+        component={MapViewWrapper}
         options={{
           tabBarLabel: 'Map',
           tabBarIcon: ({ color, size }) => (

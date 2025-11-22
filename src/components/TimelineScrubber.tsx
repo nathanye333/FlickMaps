@@ -18,6 +18,14 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
   const dragStartOffset = useRef(0);
   const dragOffsetRef = useRef(0);
   const intervalInfoRef = useRef({ pixelsPerUnit: 80 });
+  const lastDragX = useRef(0); // Track last drag position to calculate incremental changes
+  
+  // Sensitivity factor: reduces how much the timeline moves relative to swipe distance
+  // Lower values = less sensitive (timeline moves less for same swipe distance)
+  const swipeSensitivity = 1;
+  
+  // Maximum change per update to prevent rapid date changes during continuous drag
+  const maxChangePerUpdate = 20; // pixels
 
   // Calculate interval size based on filter - memoized to prevent infinite loops
   const intervalInfo = useMemo(() => {
@@ -92,18 +100,34 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
       onPanResponderGrant: () => {
         // Store the starting offset when drag begins
         dragStartOffset.current = dragOffsetRef.current;
+        lastDragX.current = 0; // Reset last position tracker
       },
       onPanResponderMove: (evt, gestureState) => {
-        const deltaX = gestureState.dx;
-        const newOffset = dragStartOffset.current + deltaX;
+        const currentDragX = gestureState.dx;
+        // Calculate incremental change from last update (not total from start)
+        // This prevents accumulation during continuous drag
+        const incrementalDeltaX = currentDragX - lastDragX.current;
+        lastDragX.current = currentDragX;
+        
+        // Apply sensitivity factor to incremental change
+        const adjustedDeltaX = incrementalDeltaX * swipeSensitivity;
+        
+        // Limit maximum change per update to prevent rapid date changes during continuous drag
+        // This caps how much the timeline can move in a single update cycle
+        const clampedDeltaX = Math.max(-maxChangePerUpdate, Math.min(maxChangePerUpdate, adjustedDeltaX));
+        
+        // Update offset incrementally from current position, not from start
+        const newOffset = dragOffsetRef.current + clampedDeltaX;
         // Clamp to prevent going into the future (offset < 0)
         setDragOffset(Math.max(newOffset, 0));
       },
       onPanResponderRelease: (evt, gestureState) => {
         // Snap to nearest interval when releasing
-        const currentOffset = dragStartOffset.current + gestureState.dx;
-        const snapOffset = Math.round(currentOffset / intervalInfoRef.current.pixelsPerUnit) * intervalInfoRef.current.pixelsPerUnit;
+        // Use the current dragOffset (which has been updated incrementally) for snapping
+        // This ensures consistency with the incremental movement during drag
+        const snapOffset = Math.round(dragOffsetRef.current / intervalInfoRef.current.pixelsPerUnit) * intervalInfoRef.current.pixelsPerUnit;
         setDragOffset(Math.max(snapOffset, 0));
+        lastDragX.current = 0; // Reset for next drag
       },
     })
   ).current;

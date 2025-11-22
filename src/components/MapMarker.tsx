@@ -112,18 +112,6 @@ const CustomMarkerContent = ({ photo, photos, isSelected, onProfileClick, size }
         })()}
       </View>
       
-      {/* "and x others" text for stacks with more than 3 authors - matching Leaflet exactly */}
-      {isStack && remainingCount > 0 && (
-        <View style={[styles.othersTextContainer, { 
-          top: Math.max(26, markerSize * 0.32),
-          left: 2,
-        }]}>
-          <Text style={[styles.othersText, { fontSize: Math.max(7, markerSize * 0.09) }]}>
-            and {remainingCount} other{remainingCount !== 1 ? 's' : ''}
-          </Text>
-        </View>
-      )}
-      
       {/* Photo count badge - bottom right corner */}
       {isStack && (
         <View style={[styles.photoCountBadge, {
@@ -142,19 +130,21 @@ const CustomMarkerContent = ({ photo, photos, isSelected, onProfileClick, size }
       {(() => {
         const triangleSize = Math.max(6, markerSize * 0.06);
         const triangleHeight = Math.max(8, markerSize * 0.08);
-        // The Marker has anchor={{ x: 0.5, y: 1 }} which anchors the coordinate at bottom center of marker
+        // The Marker has anchor={{ x: 0.5, y: 1 }} which anchors the coordinate at bottom center of marker container
         // The triangle's tip must point to this exact coordinate and stay fixed when map moves/zooms
-        // The triangle is created with borders (width: 0, height: 0) positioned at left: '50%'
-        // With width: 0, the element is centered at 50%, and borders extend equally left/right
-        // This naturally centers the triangle tip on the anchor point (bottom center of marker)
-        // The triangle stays anchored at the exact location coordinate regardless of map movement
+        // The triangle is created with borders pointing downward - borderTopWidth creates the base, tip is at bottom
+        // To extend from bottom of post: position triangle so its base is at the bottom edge of the marker
+        // The triangle extends downward from the marker, with its tip at the anchor point (coordinate location)
+        // Position element at bottom: -triangleHeight so the base (top border) aligns with marker bottom (0)
+        // and the tip extends to the anchor point below
         return (
           <View style={[styles.locationTriangle, {
             borderTopWidth: triangleHeight,
             borderLeftWidth: triangleSize,
             borderRightWidth: triangleSize,
             left: '50%',
-            bottom: -triangleHeight, // Extends below marker, tip points to exact location coordinate
+            bottom: -triangleHeight, // Position so base is at marker bottom (0), tip extends to anchor point
+            transform: [{ translateX: -triangleSize }], // Center triangle by shifting left by half its base width
           }]} />
         );
       })()}
@@ -266,24 +256,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: '600',
-  },
-  othersTextContainer: {
-    position: 'absolute',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    maxWidth: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  othersText: {
-    color: 'white',
-    fontWeight: '600',
-    textAlign: 'center',
   },
   locationTriangle: {
     position: 'absolute',

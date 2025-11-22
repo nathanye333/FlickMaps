@@ -1,18 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, FlatList } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-
-interface Group {
-  id: string;
-  name: string;
-  memberCount: number;
-  members: { username: string; avatar: string }[];
-  mapPreview: string;
-  lastUpdated: string;
-  photoCount: number;
-}
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { mockGroups, Group, addGroup } from '../data/mockData';
+import { CreateGroupModal } from './CreateGroupModal';
 
 interface GroupMapsScreenProps {
   onBack?: () => void;
@@ -22,40 +15,35 @@ interface GroupMapsScreenProps {
   route?: any;
 }
 
-const mockGroups: Group[] = [
-  {
-    id: 'europe-trip',
-    name: 'Europe Trip',
-    memberCount: 5,
-    members: [
-      { username: 'Sarah Chen', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop' },
-      { username: 'Mike Wilson', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop' },
-    ],
-    mapPreview: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400&h=400&fit=crop',
-    lastUpdated: '2 days ago',
-    photoCount: 47
-  },
-  {
-    id: 'photography-club',
-    name: 'Photography Club',
-    memberCount: 12,
-    members: [
-      { username: 'Photography Pro', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop' },
-    ],
-    mapPreview: 'https://images.unsplash.com/photo-1452421822248-d4c2b47f0c81?w=400&h=400&fit=crop',
-    lastUpdated: '5 hours ago',
-    photoCount: 124
-  },
-];
-
 export function GroupMapsScreen(props: GroupMapsScreenProps) {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  // Use a copy of mockGroups to avoid reference issues
+  const [groups, setGroups] = useState([...mockGroups]);
 
   const handleBack = () => {
     if (props.onBack) {
       props.onBack();
     } else {
       navigation.goBack();
+    }
+  };
+
+  const handleCreateGroup = (name: string, selectedFriends: string[]) => {
+    const newGroup = addGroup(name, selectedFriends);
+    // Check if group already exists to avoid duplicates
+    setGroups(prev => {
+      if (prev.some(g => g.id === newGroup.id)) {
+        return prev; // Group already exists, don't add duplicate
+      }
+      return [...prev, newGroup];
+    });
+    // Navigate to the new group
+    if (props.onGroupSelect) {
+      props.onGroupSelect(newGroup.id);
+    } else {
+      navigation.navigate('GroupMapView' as never, { groupId: newGroup.id, groupName: newGroup.name } as never);
     }
   };
 
@@ -85,7 +73,7 @@ export function GroupMapsScreen(props: GroupMapsScreenProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Pressable onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </Pressable>
@@ -96,19 +84,30 @@ export function GroupMapsScreen(props: GroupMapsScreenProps) {
       </View>
 
       <FlatList
-        data={mockGroups}
+        data={groups}
         renderItem={renderGroup}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
       />
 
       <Pressable
-        onPress={props.onCreateGroup}
-        style={styles.createButton}
+        onPress={() => setShowCreateModal(true)}
+        style={[styles.createButton, { 
+          position: 'absolute',
+          bottom: insets.bottom + 16,
+          left: 16,
+          right: 16,
+        }]}
       >
         <Ionicons name="add" size={24} color="white" />
         <Text style={styles.createButtonText}>Create Group</Text>
       </Pressable>
+
+      <CreateGroupModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreateGroup={handleCreateGroup}
+      />
     </View>
   );
 }
@@ -181,10 +180,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    margin: 16,
     padding: 16,
     backgroundColor: '#06b6d4',
     borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
   createButtonText: {
     color: 'white',
