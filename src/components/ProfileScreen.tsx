@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { mockPersonalPhotos } from '../data/mockData';
 import { Photo } from '../App';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ProfileScreenProps {
   onPhotoSelect?: (photo: Photo) => void;
@@ -23,6 +24,7 @@ const stats = [
 
 export function ProfileScreen({ onPhotoSelect, onViewOnMap, onSettings, navigation, route }: ProfileScreenProps) {
   const nav = useNavigation();
+  const insets = useSafeAreaInsets();
   const [showSettings, setShowSettings] = useState(false);
 
   const handlePhotoPress = (photo: Photo) => {
@@ -63,7 +65,10 @@ export function ProfileScreen({ onPhotoSelect, onViewOnMap, onSettings, navigati
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top }]}
+    >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -73,7 +78,13 @@ export function ProfileScreen({ onPhotoSelect, onViewOnMap, onSettings, navigati
           </View>
           <Pressable 
             style={styles.settingsButton}
-            onPress={() => onSettings && onSettings()}
+            onPress={() => {
+              if (onSettings) {
+                onSettings();
+              } else {
+                nav.navigate('Settings' as never);
+              }
+            }}
           >
             <Ionicons name="settings" size={20} color="#4b5563" />
           </Pressable>

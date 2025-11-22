@@ -5,6 +5,7 @@ import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Import AppContext from App.tsx
 import { AppContext } from '../../App';
@@ -22,6 +23,7 @@ interface PhotoDetailsProps {
 export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilityChange, navigation, route }: PhotoDetailsProps) {
   const nav = useNavigation();
   const routeParams = useRoute();
+  const insets = useSafeAreaInsets();
   const photo = (routeParams.params as any)?.photo || (route as any)?.params?.photo;
   
   // Get context if available
@@ -39,19 +41,10 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
 
   // Set selectedPhoto in context when component mounts or photo changes
   useEffect(() => {
-    if (photo && context?.setSelectedPhoto) {
+    if (photo && context && context.setSelectedPhoto) {
       context.setSelectedPhoto(photo);
     }
-    // Cleanup: clear selectedPhoto when component unmounts
-    return () => {
-      if (context?.setSelectedPhoto && photo) {
-        // Only clear if this is the currently selected photo
-        if (context.selectedPhoto?.id === photo.id) {
-          // Don't clear here as we might be navigating to map
-        }
-      }
-    };
-  }, [photo]);
+  }, [photo, context]);
 
   const handleClose = () => {
     if (onClose) {
@@ -64,8 +57,12 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
   const handleVisibilityChange = (newVisibility: 'personal' | 'friends' | 'public') => {
     setCurrentVisibility(newVisibility);
     setShowVisibilityMenu(false);
-    if (onVisibilityChange && photo) {
-      onVisibilityChange(photo.id, newVisibility);
+    // Use context's onVisibilityChange if available, otherwise use prop
+    const visibilityHandler = (context && typeof context.onVisibilityChange === 'function') 
+      ? context.onVisibilityChange 
+      : onVisibilityChange;
+    if (visibilityHandler && photo) {
+      visibilityHandler(photo.id, newVisibility);
     }
   };
 
@@ -135,7 +132,7 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
       {/* Close Button */}
       <Pressable
         onPress={handleClose}
-        style={styles.closeButton}
+        style={[styles.closeButton, { top: Math.max(insets.top + 16, 44) }]}
       >
         <View style={styles.closeButtonInner}>
           <Ionicons name="close" size={24} color="white" />
@@ -219,7 +216,59 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
           </View>
           <Text style={styles.actionLabel}>Share</Text>
         </Pressable>
+        
+        {/* Visibility button for own photos */}
+        {isOwnPhoto && (
+          <Pressable style={styles.actionButton} onPress={() => setShowVisibilityMenu(!showVisibilityMenu)}>
+            <View style={[styles.actionButtonInner, showVisibilityMenu && styles.actionButtonActive]}>
+              <Ionicons 
+                name={getVisibilityIcon(currentVisibility)} 
+                size={24} 
+                color={showVisibilityMenu ? '#06b6d4' : '#374151'} 
+              />
+            </View>
+            <Text style={styles.actionLabel}>{getVisibilityLabel(currentVisibility)}</Text>
+          </Pressable>
+        )}
       </View>
+      
+      {/* Visibility Menu */}
+      {isOwnPhoto && showVisibilityMenu && (
+        <View style={styles.visibilityMenu}>
+          <Pressable 
+            style={[styles.visibilityOption, currentVisibility === 'personal' && styles.visibilityOptionActive]}
+            onPress={() => handleVisibilityChange('personal')}
+          >
+            <Ionicons name="lock-closed" size={20} color={currentVisibility === 'personal' ? '#06b6d4' : '#374151'} />
+            <Text style={[styles.visibilityOptionText, currentVisibility === 'personal' && styles.visibilityOptionTextActive]}>
+              Only Me
+            </Text>
+            {currentVisibility === 'personal' && <Ionicons name="checkmark" size={20} color="#06b6d4" />}
+          </Pressable>
+          
+          <Pressable 
+            style={[styles.visibilityOption, currentVisibility === 'friends' && styles.visibilityOptionActive]}
+            onPress={() => handleVisibilityChange('friends')}
+          >
+            <Ionicons name="people" size={20} color={currentVisibility === 'friends' ? '#06b6d4' : '#374151'} />
+            <Text style={[styles.visibilityOptionText, currentVisibility === 'friends' && styles.visibilityOptionTextActive]}>
+              Friends
+            </Text>
+            {currentVisibility === 'friends' && <Ionicons name="checkmark" size={20} color="#06b6d4" />}
+          </Pressable>
+          
+          <Pressable 
+            style={[styles.visibilityOption, currentVisibility === 'public' && styles.visibilityOptionActive]}
+            onPress={() => handleVisibilityChange('public')}
+          >
+            <Ionicons name="globe" size={20} color={currentVisibility === 'public' ? '#06b6d4' : '#374151'} />
+            <Text style={[styles.visibilityOptionText, currentVisibility === 'public' && styles.visibilityOptionTextActive]}>
+              Public
+            </Text>
+            {currentVisibility === 'public' && <Ionicons name="checkmark" size={20} color="#06b6d4" />}
+          </Pressable>
+        </View>
+      )}
 
       {/* Comments Section - shown above View on Map button */}
       {showComments && (
@@ -315,7 +364,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: 'absolute',
-    top: 16,
     right: 16,
     zIndex: 30,
   },
@@ -521,6 +569,32 @@ const styles = StyleSheet.create({
   viewOnMapText: {
     color: 'white',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  visibilityMenu: {
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingVertical: 8,
+  },
+  visibilityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  visibilityOptionActive: {
+    backgroundColor: '#ecfeff',
+  },
+  visibilityOptionText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  visibilityOptionTextActive: {
+    color: '#06b6d4',
     fontWeight: '600',
   },
 });

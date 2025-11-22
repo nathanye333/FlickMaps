@@ -12,7 +12,7 @@ interface CategorySidebarProps {
 
 const categories = [
   { name: 'All', icon: 'sparkles' as const },
-  { name: 'Scenic', icon: 'mountain' as const },
+  { name: 'Scenic', icon: 'image' as const },
   { name: 'Food', icon: 'restaurant' as const },
   { name: 'Architecture', icon: 'business' as const },
   { name: 'Hidden Gems', icon: 'compass' as const },

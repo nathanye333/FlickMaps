@@ -145,7 +145,6 @@ export function PhotoPin({ photos, onClick, photoSize, position, displayPosition
               {
                 minWidth: Math.max(22, photoSize * 0.2),
                 minHeight: Math.max(22, photoSize * 0.2),
-                fontSize: Math.max(10, photoSize * 0.1),
               }
             ]}
           >

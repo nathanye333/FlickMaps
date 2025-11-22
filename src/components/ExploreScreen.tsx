@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Photo } from '../App';
 import { mockGlobalPhotos, mockDailyChallengeSubmissions } from '../data/mockData';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ExploreScreenProps {
   onPhotoSelect?: (photo: Photo) => void;
@@ -16,6 +17,7 @@ interface ExploreScreenProps {
 
 export function ExploreScreen({ onPhotoSelect, onProfileClick, onChallengeClick, navigation, route }: ExploreScreenProps) {
   const nav = useNavigation();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'trending' | 'challenges'>('trending');
   
   const trendingPhotos = [...mockGlobalPhotos].sort((a, b) => b.likes - a.likes).slice(0, 12);
@@ -72,7 +74,7 @@ export function ExploreScreen({ onPhotoSelect, onProfileClick, onChallengeClick,
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top }}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Explore</Text>

@@ -5,8 +5,9 @@ import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import MapView from 'react-native-maps';
 import { MapMarker } from './MapMarker';
+import { PhotoStackModal } from './PhotoStackModal';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 interface GroupMapViewProps {
   groupId?: string;
@@ -49,13 +50,7 @@ export function GroupMapView(props: GroupMapViewProps) {
     }
   };
 
-  const handlePhotoPress = (photo: Photo) => {
-    if (props.onPhotoSelect) {
-      props.onPhotoSelect(photo);
-    } else {
-      navigation.navigate('PhotoDetails' as never, { photo } as never);
-    }
-  };
+  const [selectedStack, setSelectedStack] = useState<Photo[] | null>(null);
 
   const [region, setRegion] = useState(() => {
     if (mockGroupPhotos.length > 0) {
@@ -74,69 +69,96 @@ export function GroupMapView(props: GroupMapViewProps) {
     };
   });
 
-  // Calculate adaptive marker base size (same logic as MapView)
-  // Referencing Leaflet implementation: Base size 100px, Stack 110px (1.1x), Selected 130px (1.3x)
-  // Note: This returns the BASE size only. Stack and selection factors are applied in MapMarker to match Leaflet's exact logic.
-  const calculateMarkerSize = (latitudeDelta: number, nearbyCount: number = 0): number => {
+  // Calculate adaptive marker size - photos get larger when zoomed in, smaller when zoomed out
+  const calculateMarkerSize = (latitudeDelta: number, nearbyCount: number = 0, photoCount: number = 1): number => {
     const zoomFactor = Math.max(0.001, Math.min(0.15, latitudeDelta));
     const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001);
-    // Start with 100px base (matching Leaflet), adapt down when zoomed out
-    const baseSize = 70 + (1 - normalizedZoom) * 30; // Range 70-100px (matching Leaflet's 100px base when zoomed in)
-    const densityFactor = Math.max(0.75, 1 - (nearbyCount * 0.03));
-    // Return base size only - stack and selection factors applied in MapMarker
-    const finalSize = Math.max(50, Math.min(100, baseSize * densityFactor));
+    // Adaptive photos: 80px (zoomed out) to 200px (zoomed in) - a little bigger
+    const baseSize = 80 + (1 - normalizedZoom) * 120;
+    const densityFactor = Math.max(0.85, 1 - (nearbyCount * 0.02));
+    const finalSize = Math.max(50, Math.min(220, baseSize * densityFactor));
     return Math.round(finalSize);
   };
 
-  // Adaptive clustering
+  // Stacking: detect if photos are overlapping in pixels on screen
+  // Use pixel-based overlap detection instead of degrees threshold
   const photoGroups = useMemo(() => {
     if (mockGroupPhotos.length === 0) return [];
     
     const groups = new Map<string, Photo[]>();
-    const estimatedBaseSize = calculateMarkerSize(region.latitudeDelta, 0);
-    const estimatedMarkerSize = Math.min(estimatedBaseSize * 1.3, 130); // Max possible size
-    const screenWidthDegrees = region.longitudeDelta;
-    const pixelsPerDegree = width / screenWidthDegrees;
-    const markerSizeInDegrees = estimatedMarkerSize / pixelsPerDegree;
-    const zoomFactor = Math.max(0.001, Math.min(0.15, region.latitudeDelta));
-    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001);
-    const baseThreshold = 0.0005;
-    const zoomAdjustedThreshold = baseThreshold * (1 + normalizedZoom * 3);
-    const sizeBasedThreshold = markerSizeInDegrees * 1.5;
-    const finalThreshold = Math.max(0.0002, Math.min(0.005, Math.max(zoomAdjustedThreshold, sizeBasedThreshold)));
     
+    // Calculate the marker size in pixels
+    const estimatedSize = calculateMarkerSize(region.latitudeDelta, 0, 1);
+    
+    // Calculate pixels per degree for both lat and lng
+    const screenWidthDegrees = region.longitudeDelta;
+    const screenHeightDegrees = region.latitudeDelta;
+    const pixelsPerDegreeLng = width / screenWidthDegrees;
+    const pixelsPerDegreeLat = height / screenHeightDegrees;
+    
+    // Photos should stack if they would overlap in pixels on screen
+    // Use a fraction of the marker size to detect overlap (e.g., 80% overlap threshold)
+    const overlapThresholdPixels = estimatedSize * 0.8;
+    
+    // Group photos that would visually overlap in pixels
     mockGroupPhotos.forEach(photo => {
       let bestGroup: [string, Photo[]] | null = null;
-      let minDistance = Infinity;
+      let minDistancePixels = Infinity;
       
+      // Find the closest existing group within pixel overlap threshold
       for (const [key, group] of groups.entries()) {
         const [lat, lng] = key.split(',').map(Number);
-        const distance = Math.sqrt(Math.pow(photo.lat - lat, 2) + Math.pow(photo.lng - lng, 2));
-        if (distance < finalThreshold && distance < minDistance) {
-          minDistance = distance;
+        
+        // Calculate distance in degrees
+        const latDiff = photo.lat - lat;
+        const lngDiff = photo.lng - lng;
+        
+        // Convert to pixels on screen
+        const latDiffPixels = Math.abs(latDiff * pixelsPerDegreeLat);
+        const lngDiffPixels = Math.abs(lngDiff * pixelsPerDegreeLng);
+        
+        // Calculate pixel distance (Euclidean distance in pixel space)
+        const distancePixels = Math.sqrt(
+          Math.pow(latDiffPixels, 2) + Math.pow(lngDiffPixels, 2)
+        );
+        
+        // If photos would overlap in pixels, add to this group
+        if (distancePixels < overlapThresholdPixels && distancePixels < minDistancePixels) {
+          minDistancePixels = distancePixels;
           bestGroup = [key, group];
         }
       }
       
       if (bestGroup) {
+        // Add photo to existing stack - only one photo will be shown on top
         bestGroup[1].push(photo);
       } else {
+        // Create new group
         groups.set(`${photo.lat},${photo.lng}`, [photo]);
       }
     });
     
+    // Calculate sizes for each group
     const groupArray = Array.from(groups.entries());
+    
     return groupArray.map(([key, groupPhotos]) => {
       const [lat, lng] = key.split(',').map(Number);
+      
+      // Count nearby groups for slight size adjustment using pixel distance
       const nearbyCount = groupArray.filter(([otherKey]) => {
         if (otherKey === key) return false;
         const [otherLat, otherLng] = otherKey.split(',').map(Number);
-        const distance = Math.sqrt(Math.pow(lat - otherLat, 2) + Math.pow(lng - otherLng, 2));
-        return distance < finalThreshold * 3;
+        const latDiffPixels = Math.abs((lat - otherLat) * pixelsPerDegreeLat);
+        const lngDiffPixels = Math.abs((lng - otherLng) * pixelsPerDegreeLng);
+        const distancePixels = Math.sqrt(
+          Math.pow(latDiffPixels, 2) + Math.pow(lngDiffPixels, 2)
+        );
+        return distancePixels < overlapThresholdPixels * 2;
       }).length;
       
-      // Pass base size only - MapMarker will apply stack and selection factors like Leaflet
-      const size = calculateMarkerSize(region.latitudeDelta, nearbyCount);
+      // Calculate adaptive size based on zoom
+      // When stacked, show only the top photo - no special size for stacks
+      const size = calculateMarkerSize(region.latitudeDelta, nearbyCount, 1);
       
       return {
         key,
@@ -146,7 +168,22 @@ export function GroupMapView(props: GroupMapViewProps) {
         size,
       };
     });
-  }, [region.latitudeDelta, region.longitudeDelta]);
+  }, [region.latitudeDelta, region.longitudeDelta, width, height]);
+
+  const handlePhotoPress = (photo: Photo) => {
+    // Find the group this photo belongs to
+    const group = photoGroups.find(g => g.photos.some(p => p.id === photo.id));
+    if (group) {
+      if (group.photos.length > 1) {
+        // If stacked, open the stack modal
+        setSelectedStack(group.photos);
+      } else if (props.onPhotoSelect) {
+        props.onPhotoSelect(group.photos[0]);
+      } else {
+        navigation.navigate('PhotoDetails' as never, { photo: group.photos[0] } as never);
+      }
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -180,6 +217,22 @@ export function GroupMapView(props: GroupMapViewProps) {
         <Text style={styles.title}>{groupName}</Text>
         <Text style={styles.subtitle}>{mockGroupPhotos.length} photos</Text>
       </View>
+
+      {/* Photo Stack Modal */}
+      {selectedStack && (
+        <PhotoStackModal
+          photos={selectedStack}
+          onClose={() => setSelectedStack(null)}
+          onPhotoSelect={(photo) => {
+            setSelectedStack(null);
+            if (props.onPhotoSelect) {
+              props.onPhotoSelect(photo);
+            } else {
+              navigation.navigate('PhotoDetails' as never, { photo } as never);
+            }
+          }}
+        />
+      )}
     </View>
   );
 }

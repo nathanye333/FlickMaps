@@ -7,8 +7,6 @@ import { AppContext } from '../../App';
 import { useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { TimelineScrubber } from './TimelineScrubber';
-import { CategorySidebar } from './CategorySidebar';
-import { TrendingSidebar } from './TrendingSidebar';
 import { PhotoStackModal } from './PhotoStackModal';
 import { DailyChallengeModal } from './DailyChallengeModal';
 import { PhotoUploadModal, UploadedPhoto } from './PhotoUploadModal';
@@ -53,8 +51,6 @@ export function MapView(props: MapViewProps) {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
-  const [leftSidebarVisible, setLeftSidebarVisible] = useState(false);
-  const [rightSidebarVisible, setRightSidebarVisible] = useState(false);
   const [selectedStack, setSelectedStack] = useState<Photo[] | null>(null);
   const [showDailyChallengeModal, setShowDailyChallengeModal] = useState(false);
   const [uploadedPhotos, setUploadedPhotos] = useState<Photo[]>([]);
@@ -137,109 +133,107 @@ export function MapView(props: MapViewProps) {
     }
   }, [activeMapTab]);
 
-  // Calculate adaptive marker base size based on zoom level
-  // Referencing Leaflet implementation: Base size 100px, Stack 110px (1.1x), Selected 130px (1.3x)
-  // When zoomed in (small delta), markers are bigger. When zoomed out (large delta), markers are smaller.
-  // Note: This returns the BASE size only. Stack and selection factors are applied in MapMarker to match Leaflet's exact logic.
-  const calculateMarkerSize = (latitudeDelta: number, nearbyCount: number = 0): number => {
+  // Calculate adaptive marker size based on zoom level
+  // Photos get larger when zoomed in, smaller when zoomed out
+  // When photos overlap (stack), only one photo is shown on top
+  const calculateMarkerSize = (latitudeDelta: number, nearbyCount: number = 0, photoCount: number = 1): number => {
     // Base size calculation from zoom level
     // latitudeDelta ranges from ~0.001 (very zoomed in) to ~180 (world view)
-    // Leaflet had fixed 100px base, but we adapt based on zoom for better UX
-    // We want: zoomed in (0.001) -> large markers (100px base), zoomed out (0.1+) -> medium markers (70px base)
+    // When zoomed in (small delta), markers are bigger. When zoomed out (large delta), markers are smaller.
     const zoomFactor = Math.max(0.001, Math.min(0.15, latitudeDelta));
-    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001); // 0 to 1
-    // Start with 100px base (matching Leaflet), adapt down when zoomed out
-    const baseSize = 70 + (1 - normalizedZoom) * 30; // Range 70-100px (matching Leaflet's 100px base when zoomed in)
+    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001); // 0 to 1, where 0 = zoomed in, 1 = zoomed out
     
-    // Adjust for photo density to prevent overlap
-    // If there are many photos nearby, make them slightly smaller to prevent overlap
-    const densityFactor = Math.max(0.75, 1 - (nearbyCount * 0.03));
+    // Adaptive photos: smaller when zoomed out, larger when zoomed in
+    // Range: 80px (zoomed out) to 200px (zoomed in) - a little bigger
+    const baseSize = 80 + (1 - normalizedZoom) * 120;
     
-    // Return base size only - stack and selection factors applied in MapMarker
-    const finalSize = Math.max(50, Math.min(100, baseSize * densityFactor));
+    // Slight adjustment for nearby photos to prevent excessive overlap
+    const densityFactor = Math.max(0.85, 1 - (nearbyCount * 0.02));
+    
+    // No special factor for stacks - they show as a single photo
+    const finalSize = Math.max(50, Math.min(220, baseSize * densityFactor));
     return Math.round(finalSize);
   };
 
-  // Adaptive clustering based on zoom level
-  // When zoomed out, cluster more aggressively. When zoomed in, allow more separation.
-  // Stacks should split when user zooms in enough to differentiate distance
+  // Stacking: detect if photos are overlapping in pixels on screen
+  // Use pixel-based overlap detection instead of degrees threshold
   const photoGroups = useMemo(() => {
     if (photos.length === 0) return [];
     
     const groups = new Map<string, Photo[]>();
     
-    // Dynamic threshold based on zoom level and estimated marker size
-    // When zoomed in (small delta), use smaller threshold to allow separation
-    // When zoomed out (large delta), use larger threshold to cluster more
-    // Estimate max size (stack + selection could be up to 130px)
-    const estimatedBaseSize = calculateMarkerSize(region.latitudeDelta, 0);
-    const estimatedMarkerSize = Math.min(estimatedBaseSize * 1.3, 130); // Max possible size
+    // Calculate the marker size in pixels
+    const estimatedSize = calculateMarkerSize(region.latitudeDelta, 0, 1);
     
-    // Convert marker size in pixels to approximate lat/lng distance
-    // Approximate: 1 degree latitude ≈ 111km, screen width varies
-    // For a typical screen, we want markers to cluster if they'd overlap
-    // Rough conversion: marker size in pixels / screen pixels per degree
+    // Calculate pixels per degree for both lat and lng
     const screenWidthDegrees = region.longitudeDelta;
-    const pixelsPerDegree = width / screenWidthDegrees;
-    const markerSizeInDegrees = estimatedMarkerSize / pixelsPerDegree;
+    const screenHeightDegrees = region.latitudeDelta;
+    const pixelsPerDegreeLng = width / screenWidthDegrees;
+    const pixelsPerDegreeLat = height / screenHeightDegrees;
     
-    // Threshold should be based on marker size to prevent overlap
-    // Use a factor of the marker size, adjusted by zoom
-    const zoomFactor = Math.max(0.001, Math.min(0.15, region.latitudeDelta));
-    const normalizedZoom = Math.log(zoomFactor / 0.001) / Math.log(0.15 / 0.001);
+    // Photos should stack if they would overlap in pixels on screen
+    // Use a fraction of the marker size to detect overlap (e.g., 80% overlap threshold)
+    const overlapThresholdPixels = estimatedSize * 0.8;
     
-    // When zoomed out (high normalizedZoom), cluster more (larger threshold)
-    // When zoomed in (low normalizedZoom), cluster less (smaller threshold)
-    const baseThreshold = 0.0005; // Base ~50m
-    const zoomAdjustedThreshold = baseThreshold * (1 + normalizedZoom * 3); // 0.0005 to 0.002
-    
-    // Also consider marker size - if markers are big, need larger threshold
-    const sizeBasedThreshold = markerSizeInDegrees * 1.5; // 1.5x marker size to prevent overlap
-    
-    const finalThreshold = Math.max(0.0002, Math.min(0.005, Math.max(zoomAdjustedThreshold, sizeBasedThreshold)));
-    
+    // Group photos that would visually overlap in pixels
     photos.forEach(photo => {
       let bestGroup: [string, Photo[]] | null = null;
-      let minDistance = Infinity;
+      let minDistancePixels = Infinity;
       
-      // Find the closest existing group within threshold
+      // Find the closest existing group within pixel overlap threshold
       for (const [key, group] of groups.entries()) {
         const [lat, lng] = key.split(',').map(Number);
-        const distance = Math.sqrt(
-          Math.pow(photo.lat - lat, 2) + Math.pow(photo.lng - lng, 2)
+        
+        // Calculate distance in degrees
+        const latDiff = photo.lat - lat;
+        const lngDiff = photo.lng - lng;
+        
+        // Convert to pixels on screen
+        const latDiffPixels = Math.abs(latDiff * pixelsPerDegreeLat);
+        const lngDiffPixels = Math.abs(lngDiff * pixelsPerDegreeLng);
+        
+        // Calculate pixel distance (Euclidean distance in pixel space)
+        const distancePixels = Math.sqrt(
+          Math.pow(latDiffPixels, 2) + Math.pow(lngDiffPixels, 2)
         );
         
-        if (distance < finalThreshold && distance < minDistance) {
-          minDistance = distance;
+        // If photos would overlap in pixels, add to this group
+        if (distancePixels < overlapThresholdPixels && distancePixels < minDistancePixels) {
+          minDistancePixels = distancePixels;
           bestGroup = [key, group];
         }
       }
       
       if (bestGroup) {
+        // Add photo to existing stack - only one photo will be shown on top
         bestGroup[1].push(photo);
       } else {
+        // Create new group
         groups.set(`${photo.lat},${photo.lng}`, [photo]);
       }
     });
     
-    // Calculate sizes for each group based on zoom and nearby density
+    // Calculate sizes for each group
     const groupArray = Array.from(groups.entries());
     
     return groupArray.map(([key, groupPhotos]) => {
-      // Count how many other groups are nearby to adjust size and prevent overlap
       const [lat, lng] = key.split(',').map(Number);
-      const nearbyCount = groupArray.filter(([otherKey, otherPhotos]) => {
+      
+      // Count nearby groups for slight size adjustment using pixel distance
+      const nearbyCount = groupArray.filter(([otherKey]) => {
         if (otherKey === key) return false;
         const [otherLat, otherLng] = otherKey.split(',').map(Number);
-        const distance = Math.sqrt(
-          Math.pow(lat - otherLat, 2) + Math.pow(lng - otherLng, 2)
+        const latDiffPixels = Math.abs((lat - otherLat) * pixelsPerDegreeLat);
+        const lngDiffPixels = Math.abs((lng - otherLng) * pixelsPerDegreeLng);
+        const distancePixels = Math.sqrt(
+          Math.pow(latDiffPixels, 2) + Math.pow(lngDiffPixels, 2)
         );
-        // Check within 3x threshold for density calculation
-        return distance < finalThreshold * 3;
+        return distancePixels < overlapThresholdPixels * 2;
       }).length;
       
-      // Pass base size only - MapMarker will apply stack and selection factors like Leaflet
-      const size = calculateMarkerSize(region.latitudeDelta, nearbyCount);
+      // Calculate adaptive size based on zoom
+      // When stacked, show only the top photo - no special size for stacks
+      const size = calculateMarkerSize(region.latitudeDelta, nearbyCount, 1);
       
       return {
         key,
@@ -249,7 +243,7 @@ export function MapView(props: MapViewProps) {
         size,
       };
     });
-  }, [photos, region.latitudeDelta, region.longitudeDelta, width]);
+  }, [photos, region.latitudeDelta, region.longitudeDelta, width, height]);
 
   useEffect(() => {
     if (selectedPhoto && mapRef.current) {
@@ -392,7 +386,7 @@ export function MapView(props: MapViewProps) {
       } else if (props.onPhotoSelect) {
         props.onPhotoSelect(group.photos[0]);
       } else {
-        navigation.navigate('PhotoDetails' as never, { photo: group.photos[0] } as never);
+        (navigation as any)?.navigate?.('PhotoDetails', { photo: group.photos[0] });
       }
     }
   };
@@ -544,9 +538,8 @@ export function MapView(props: MapViewProps) {
 
       {/* Note: Camera/Upload button is in BottomNav, not a floating button in MapView */}
 
-      {/* Zoom Controls - hidden when sidebars are visible */}
-      {!leftSidebarVisible && !rightSidebarVisible && (
-        <View style={styles.zoomControls}>
+      {/* Zoom Controls */}
+      <View style={styles.zoomControls}>
           <Pressable
             style={styles.zoomButton}
             onPress={handleZoomIn}
@@ -560,10 +553,9 @@ export function MapView(props: MapViewProps) {
             <Ionicons name="remove" size={20} color="#374151" />
           </Pressable>
         </View>
-      )}
 
       {/* Daily Challenge Button - Friends Tab */}
-      {activeMapTab === 'friends' && !isMapExpanded && !leftSidebarVisible && (
+      {activeMapTab === 'friends' && !isMapExpanded && (
         <Pressable
           style={styles.dailyChallengeButton}
           onPress={() => setShowDailyChallengeModal(true)}
@@ -578,7 +570,7 @@ export function MapView(props: MapViewProps) {
       )}
 
       {/* Daily Challenge Button - Global Tab */}
-      {activeMapTab === 'global' && !isMapExpanded && !leftSidebarVisible && (
+      {activeMapTab === 'global' && !isMapExpanded && (
         <Pressable
           style={styles.dailyChallengeButton}
           onPress={() => setShowDailyChallengeModal(true)}
@@ -592,48 +584,6 @@ export function MapView(props: MapViewProps) {
         </Pressable>
       )}
 
-      {/* Category Sidebar for All Tabs */}
-      {!isMapExpanded && (
-        <>
-          {/* Left edge trigger zone - from original: top: 220px, bottom: 0, width: 64px */}
-          {!leftSidebarVisible && (
-            <Pressable
-              style={styles.leftTriggerZone}
-              onPress={() => setLeftSidebarVisible(true)}
-            />
-          )}
-          
-          <CategorySidebar
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-            isMapExpanded={isMapExpanded}
-            isVisible={leftSidebarVisible}
-            onVisibilityChange={setLeftSidebarVisible}
-          />
-        </>
-      )}
-
-      {/* Trending Sidebar for Global Tab */}
-      {activeMapTab === 'global' && !isMapExpanded && (
-        <>
-          {/* Right edge trigger zone - from original: top: 128px, bottom: 0, width: 64px */}
-          {!rightSidebarVisible && (
-            <Pressable
-              style={styles.rightTriggerZone}
-              onPress={() => setRightSidebarVisible(true)}
-            />
-          )}
-          
-          <TrendingSidebar
-            photos={photos}
-            onPhotoClick={zoomToPhoto}
-            isMapExpanded={isMapExpanded}
-            isVisible={rightSidebarVisible}
-            onVisibilityChange={setRightSidebarVisible}
-          />
-        </>
-      )}
-
       {/* Photo Stack Modal */}
       {selectedStack && (
         <PhotoStackModal
@@ -644,7 +594,7 @@ export function MapView(props: MapViewProps) {
             if (props.onPhotoSelect) {
               props.onPhotoSelect(photo);
             } else {
-              navigation.navigate('PhotoDetails' as never, { photo } as never);
+              (navigation as any)?.navigate?.('PhotoDetails', { photo });
             }
           }}
         />
@@ -923,22 +873,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: 'white',
     fontWeight: 'bold',
-  },
-  leftTriggerZone: {
-    position: 'absolute',
-    left: 0,
-    top: 220, // From original: top: '220px'
-    bottom: 0,
-    width: 64, // From original: w-16 (64px)
-    zIndex: 20,
-  },
-  rightTriggerZone: {
-    position: 'absolute',
-    right: 0,
-    top: 128, // From original: top: '128px'
-    bottom: 0,
-    width: 64, // From original: w-16 (64px)
-    zIndex: 20,
   },
 });
 

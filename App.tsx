@@ -20,6 +20,7 @@ import { ExploreScreen } from './src/components/ExploreScreen';
 import { FriendsScreen } from './src/components/FriendsScreen';
 import { GroupMapsScreen } from './src/components/GroupMapsScreen';
 import { GroupMapView } from './src/components/GroupMapView';
+import { SettingsScreen } from './src/components/SettingsScreen';
 import { CameraOptionsModal } from './src/components/CameraOptionsModal';
 import { PhotoUploadModal } from './src/components/PhotoUploadModal';
 import { updatePhotoVisibility } from './src/data/mockData';
@@ -51,6 +52,7 @@ export type RootStackParamList = {
   UserMap: { username: string };
   GroupMaps: undefined;
   GroupMapView: { groupId: string; groupName: string };
+  Settings: undefined;
 };
 
 export type MainTabParamList = {
@@ -407,11 +409,35 @@ export default function App() {
               ) : (
                 <>
                   <Stack.Screen name="Main" component={MainTabs} />
-                  <Stack.Screen name="Capture" component={PhotoCapture} />
-                  <Stack.Screen name="PhotoDetails" component={PhotoDetails} />
+                  <Stack.Screen name="Capture">
+                    {(props) => (
+                      <PhotoCapture 
+                        {...props}
+                        onComplete={() => {
+                          if (navigationRef.current) {
+                            navigationRef.current.goBack();
+                          }
+                        }}
+                        onCancel={() => {
+                          if (navigationRef.current) {
+                            navigationRef.current.goBack();
+                          }
+                        }}
+                      />
+                    )}
+                  </Stack.Screen>
+                  <Stack.Screen name="PhotoDetails">
+                    {(props) => (
+                      <PhotoDetails 
+                        {...props} 
+                        onVisibilityChange={handleVisibilityChange}
+                      />
+                    )}
+                  </Stack.Screen>
                   <Stack.Screen name="UserMap" component={UserMapScreen} />
                   <Stack.Screen name="GroupMaps" component={GroupMapsScreen} />
                   <Stack.Screen name="GroupMapView" component={GroupMapView} />
+                  <Stack.Screen name="Settings" component={SettingsScreen} />
                 </>
               )}
             </Stack.Navigator>

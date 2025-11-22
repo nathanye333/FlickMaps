@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView, TextInput } from 'react-
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface User {
   username: string;
@@ -42,6 +43,7 @@ const mockFriendRequests: FriendRequest[] = [
 
 export function FriendsScreen({ onProfileClick, navigation, route }: FriendsScreenProps) {
   const nav = useNavigation();
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
   const [friends] = useState<Set<string>>(new Set(['Sarah Chen', 'Mike Wilson', 'Emma Davis', 'James Lee']));
@@ -69,7 +71,7 @@ export function FriendsScreen({ onProfileClick, navigation, route }: FriendsScre
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top }}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Friends</Text>

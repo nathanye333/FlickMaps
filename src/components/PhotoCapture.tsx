@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface PhotoCaptureProps {
   onComplete: () => void;
@@ -13,6 +14,7 @@ interface PhotoCaptureProps {
 }
 
 export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<'camera' | 'details'>('camera');
   const [caption, setCaption] = useState('');
   const [visibility, setVisibility] = useState<'personal' | 'friends' | 'public'>('friends');
@@ -62,7 +64,7 @@ export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
             facing={facing}
           >
             {/* Top Bar */}
-            <View style={styles.topBar}>
+            <View style={[styles.topBar, { paddingTop: Math.max(insets.top + 16, 44) }]}>
               <Pressable onPress={onCancel} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color="white" />
               </Pressable>
@@ -99,7 +101,7 @@ export function PhotoCapture({ onComplete, onCancel }: PhotoCaptureProps) {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 16, 44) }]}>
         <Pressable onPress={onCancel}>
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
@@ -230,8 +232,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 10,
   },
   closeButton: {
     width: 40,
@@ -290,9 +294,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
+    zIndex: 10,
   },
   cancelText: {
     color: '#4b5563',

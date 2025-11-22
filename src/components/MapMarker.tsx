@@ -13,29 +13,36 @@ interface MapMarkerProps {
   size?: number; // Adaptive size based on zoom and density
 }
 
-// Custom marker component that looks like a post - rounded square with profile picture on top left
+// Custom marker component - shows photo with profile pictures, badges, and "+ x others" like original web app
+// When stacked (overlapping), shows the top photo with UI elements - click to see all photos in stack
 const CustomMarkerContent = ({ photo, photos, isSelected, onProfileClick, size }: { photo: Photo; photos?: Photo[]; isSelected?: boolean; onProfileClick?: (username: string) => void; size?: number }) => {
-  // Get unique authors for avatar display (up to 3)
   const allPhotos = photos || [photo];
   const photoCount = allPhotos.length;
   const isStack = photoCount > 1;
   
-  // Matching Leaflet implementation exactly: Base 100px, Stack 110px (1.1x), Selected 130px (1.3x)
-  // The size prop from MapView is the base size (adaptive based on zoom, 70-100px range)
-  // Apply Leaflet's exact logic: selection takes priority, then stack, then base
-  const baseSize = size || 100;
+  // Adaptive sizing based on zoom
+  // The size prop from MapView is the base size (adaptive based on zoom, 80-200px range)
+  // Matching Leaflet implementation: Base size, Stack 1.1x, Selected 1.3x
+  const baseSize = size || 140;
   
-  // Leaflet's exact conditional logic:
-  // if selected -> 130px (regardless of stack)
-  // else if stack -> 110px (baseSize * 1.1, but cap at reasonable max)
+  // Leaflet's exact conditional logic for marker sizing:
+  // if selected -> 1.3x up to max
+  // else if stack -> 1.1x
   // else -> baseSize
   const markerSize = isSelected 
-    ? Math.min(baseSize * 1.3, 130) 
+    ? Math.min(baseSize * 1.3, 260) 
     : isStack 
-      ? Math.min(baseSize * 1.1, 110)
+      ? Math.min(baseSize * 1.1, 240)
       : baseSize;
-  
-  const uniqueAuthors = Array.from(new Map(allPhotos.map(p => [p.author, p])).values());
+
+  // Get unique authors for avatar display (up to 3) - matching Leaflet implementation exactly
+  const uniqueAuthors = Array.from(
+    new Map(
+      allPhotos
+        .filter(p => p && p.author && p.authorAvatar)
+        .map(p => [p.author, p])
+    ).values()
+  );
   const displayAuthors = uniqueAuthors.slice(0, 3);
   const remainingCount = Math.max(0, uniqueAuthors.length - 3);
 
@@ -48,52 +55,67 @@ const CustomMarkerContent = ({ photo, photos, isSelected, onProfileClick, size }
         contentFit="cover"
       />
       
-      {/* Profile Picture in Top-Left Corner - matching post styling exactly like PhotoPin */}
+      {/* Profile Picture in Top-Left Corner - matching Leaflet implementation exactly */}
       <View style={styles.avatarsContainer}>
-        {displayAuthors.map((authorPhoto, index) => (
-          <View
-            key={index}
-            style={[
-              styles.avatarContainer,
-              {
-                width: Math.max(24, markerSize * 0.22),
-                height: Math.max(24, markerSize * 0.22),
-                marginLeft: index > 0 ? Math.max(2, markerSize * 0.02) : 0,
-              }
-            ]}
-          >
-            <Image
-              source={{ uri: authorPhoto.authorAvatar }}
-              style={styles.avatar}
-              contentFit="cover"
-            />
-          </View>
-        ))}
+        {displayAuthors.map((authorPhoto, index) => {
+          // Match Leaflet exactly: avatarSize = Math.max(20, markerSize * 0.22), avatarMargin = Math.max(1, markerSize * 0.015)
+          const avatarSize = Math.max(20, markerSize * 0.22);
+          const avatarMargin = Math.max(1, markerSize * 0.015);
+          const leftPos = 2 + (index * (avatarSize + avatarMargin));
+          
+          return (
+            <View
+              key={index}
+              style={[
+                styles.avatarContainer,
+                {
+                  width: avatarSize,
+                  height: avatarSize,
+                  left: leftPos,
+                  top: 2,
+                }
+              ]}
+            >
+              <Image
+                source={{ uri: authorPhoto.authorAvatar }}
+                style={styles.avatar}
+                contentFit="cover"
+              />
+            </View>
+          );
+        })}
         
-        {/* Remaining authors indicator */}
-        {remainingCount > 0 && (
-          <View
-            style={[
-              styles.avatarContainer,
-              styles.avatarRemaining,
-              {
-                width: Math.max(24, markerSize * 0.22),
-                height: Math.max(24, markerSize * 0.22),
-                marginLeft: Math.max(2, markerSize * 0.02),
-              }
-            ]}
-          >
-            <Text style={[styles.avatarRemainingText, { fontSize: Math.max(8, markerSize * 0.08) }]}>
-              +{remainingCount}
-            </Text>
-          </View>
-        )}
+        {/* Remaining authors indicator - "+ x" - matching Leaflet exactly */}
+        {remainingCount > 0 && (() => {
+          const avatarSize = Math.max(20, markerSize * 0.22);
+          const avatarMargin = Math.max(1, markerSize * 0.015);
+          const leftPos = 2 + (displayAuthors.length * (avatarSize + avatarMargin));
+          
+          return (
+            <View
+              style={[
+                styles.avatarContainer,
+                styles.avatarRemaining,
+                {
+                  width: avatarSize,
+                  height: avatarSize,
+                  left: leftPos,
+                  top: 2,
+                }
+              ]}
+            >
+              <Text style={[styles.avatarRemainingText, { fontSize: Math.max(8, markerSize * 0.08) }]}>
+                +{remainingCount}
+              </Text>
+            </View>
+          );
+        })()}
       </View>
       
-      {/* "and x others" text for stacks with more than 3 authors */}
+      {/* "and x others" text for stacks with more than 3 authors - matching Leaflet exactly */}
       {isStack && remainingCount > 0 && (
         <View style={[styles.othersTextContainer, { 
-          top: Math.max(28, markerSize * 0.35),
+          top: Math.max(26, markerSize * 0.32),
           left: 2,
         }]}>
           <Text style={[styles.othersText, { fontSize: Math.max(7, markerSize * 0.09) }]}>
@@ -102,12 +124,40 @@ const CustomMarkerContent = ({ photo, photos, isSelected, onProfileClick, size }
         </View>
       )}
       
-      {/* Photo count badge - top right */}
+      {/* Photo count badge - bottom right corner */}
       {isStack && (
-        <View style={styles.photoCountBadge}>
-          <Text style={styles.photoCountText}>{photoCount}</Text>
+        <View style={[styles.photoCountBadge, {
+          minWidth: Math.max(22, markerSize * 0.22),
+          minHeight: Math.max(22, markerSize * 0.22),
+          bottom: -8,
+          right: -8,
+        }]}>
+          <Text style={[styles.photoCountText, { fontSize: Math.max(10, markerSize * 0.1) }]}>
+            {photoCount}
+          </Text>
         </View>
       )}
+      
+      {/* Triangle/arrow pointing down to exact location - stays anchored at coordinate */}
+      {(() => {
+        const triangleSize = Math.max(6, markerSize * 0.06);
+        const triangleHeight = Math.max(8, markerSize * 0.08);
+        // The Marker has anchor={{ x: 0.5, y: 1 }} which anchors the coordinate at bottom center of marker
+        // The triangle's tip must point to this exact coordinate and stay fixed when map moves/zooms
+        // The triangle is created with borders (width: 0, height: 0) positioned at left: '50%'
+        // With width: 0, the element is centered at 50%, and borders extend equally left/right
+        // This naturally centers the triangle tip on the anchor point (bottom center of marker)
+        // The triangle stays anchored at the exact location coordinate regardless of map movement
+        return (
+          <View style={[styles.locationTriangle, {
+            borderTopWidth: triangleHeight,
+            borderLeftWidth: triangleSize,
+            borderRightWidth: triangleSize,
+            left: '50%',
+            bottom: -triangleHeight, // Extends below marker, tip points to exact location coordinate
+          }]} />
+        );
+      })()}
     </View>
   );
 };
@@ -141,7 +191,7 @@ export function MapMarker({ photo, photos, onPress, isSelected, onProfileClick, 
 const styles = StyleSheet.create({
   markerContainer: {
     borderRadius: 12, // Curved square - matching post styling
-    overflow: 'hidden',
+    overflow: 'visible', // Allow badge to extend beyond container
     borderWidth: 2,
     borderColor: 'white',
     shadowColor: '#000',
@@ -154,16 +204,19 @@ const styles = StyleSheet.create({
   markerImage: {
     width: '100%',
     height: '100%',
+    borderRadius: 10, // Match container border radius minus border width
+    overflow: 'hidden', // Ensure image is clipped to rounded corners
   },
   avatarsContainer: {
     position: 'absolute',
-    top: 2, // Closer to top left corner
-    left: 2, // Closer to top left corner
-    flexDirection: 'row',
-    alignItems: 'center',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
     zIndex: 10,
   },
   avatarContainer: {
+    position: 'absolute',
     borderRadius: 999, // Circular
     borderWidth: 2,
     borderColor: 'white',
@@ -190,7 +243,7 @@ const styles = StyleSheet.create({
   },
   photoCountBadge: {
     position: 'absolute',
-    top: -8,
+    bottom: -8, // Bottom right corner
     right: -8,
     backgroundColor: '#06b6d4',
     borderRadius: 999,
@@ -201,12 +254,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     minWidth: 24,
-    height: 24,
+    minHeight: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
+    zIndex: 20, // Ensure it's above other elements
   },
   photoCountText: {
     color: 'white',
@@ -230,6 +284,17 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  locationTriangle: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: 'white', // Match the photo border color
+    zIndex: 5,
   },
 });
 
