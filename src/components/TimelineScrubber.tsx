@@ -18,6 +18,7 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
   const dragStartOffset = useRef(0);
   const dragOffsetRef = useRef(0);
   const intervalInfoRef = useRef({ pixelsPerUnit: 80 });
+  const maxOffsetRef = useRef(0);
   const lastDragX = useRef(0); // Track last drag position to calculate incremental changes
   
   // Sensitivity factor: reduces how much the timeline moves relative to swipe distance
@@ -41,10 +42,59 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
     }
   }, [filter]);
 
+  // Calculate the maximum offset (earliest photo date) - memoized
+  const maxOffset = useMemo(() => {
+    if (photos.length === 0) return 0;
+    
+    const now = new Date();
+    const earliestPhoto = photos.reduce((earliest, photo) => {
+      const photoDate = new Date(photo.timestamp);
+      return photoDate < earliest ? photoDate : earliest;
+    }, new Date(photos[0].timestamp));
+    
+    // If earliest photo is in the future, don't allow scrolling back
+    if (earliestPhoto > now) return 0;
+    
+    // Calculate how many intervals back the earliest photo is
+    let intervalsBack = 0;
+    switch (filter) {
+      case 'daily': {
+        const daysDiff = Math.floor((now.getTime() - earliestPhoto.getTime()) / (1000 * 60 * 60 * 24));
+        intervalsBack = Math.max(0, daysDiff);
+        break;
+      }
+      case 'weekly': {
+        const daysDiff = Math.floor((now.getTime() - earliestPhoto.getTime()) / (1000 * 60 * 60 * 24));
+        intervalsBack = Math.max(0, Math.floor(daysDiff / 7));
+        break;
+      }
+      case 'monthly': {
+        const yearsDiff = now.getFullYear() - earliestPhoto.getFullYear();
+        const monthsDiff = now.getMonth() - earliestPhoto.getMonth();
+        intervalsBack = Math.max(0, yearsDiff * 12 + monthsDiff);
+        break;
+      }
+      case 'yearly': {
+        intervalsBack = Math.max(0, now.getFullYear() - earliestPhoto.getFullYear());
+        break;
+      }
+    }
+    
+    // Convert intervals to pixels (positive offset means going into the past)
+    return intervalsBack * intervalInfo.pixelsPerUnit;
+  }, [photos, filter, intervalInfo.pixelsPerUnit]);
+
   // Reset to current date (offset 0) when filter changes or resetTrigger changes
   useEffect(() => {
     setDragOffset(0);
   }, [filter, resetTrigger]);
+
+  // Clamp drag offset if it exceeds maxOffset when photos change
+  useEffect(() => {
+    if (dragOffset > maxOffset) {
+      setDragOffset(maxOffset);
+    }
+  }, [maxOffset, dragOffset]);
 
   // Get the current middle date based on drag offset
   const getCurrentDate = useCallback(() => {
@@ -91,6 +141,10 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
   useEffect(() => {
     intervalInfoRef.current = intervalInfo;
   }, [intervalInfo]);
+
+  useEffect(() => {
+    maxOffsetRef.current = maxOffset;
+  }, [maxOffset]);
   
   // Create pan responder with refs to avoid stale closures
   const panResponder = useRef(
@@ -118,15 +172,16 @@ export function TimelineScrubber({ photos, filter, onTimeChange, resetTrigger }:
         
         // Update offset incrementally from current position, not from start
         const newOffset = dragOffsetRef.current + clampedDeltaX;
-        // Clamp to prevent going into the future (offset < 0)
-        setDragOffset(Math.max(newOffset, 0));
+        // Clamp to prevent going into the future (offset < 0) and past the earliest photo (offset > maxOffset)
+        setDragOffset(Math.max(0, Math.min(newOffset, maxOffsetRef.current)));
       },
       onPanResponderRelease: (evt, gestureState) => {
         // Snap to nearest interval when releasing
         // Use the current dragOffset (which has been updated incrementally) for snapping
         // This ensures consistency with the incremental movement during drag
         const snapOffset = Math.round(dragOffsetRef.current / intervalInfoRef.current.pixelsPerUnit) * intervalInfoRef.current.pixelsPerUnit;
-        setDragOffset(Math.max(snapOffset, 0));
+        // Clamp to prevent going into the future (offset < 0) and past the earliest photo (offset > maxOffset)
+        setDragOffset(Math.max(0, Math.min(snapOffset, maxOffsetRef.current)));
         lastDragX.current = 0; // Reset for next drag
       },
     })

@@ -802,6 +802,85 @@ export const mockDailyChallengeSubmissions: DailyChallengeSubmission[] = [
   },
 ];
 
+export const mockFriendsChallengeSubmissions: DailyChallengeSubmission[] = [
+  {
+    id: 'fdc1',
+    photo: {
+      id: 'fdc-photo-1',
+      imageUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
+      lat: 37.7849,
+      lng: -122.4094,
+      location: 'San Francisco, CA',
+      caption: 'Golden hour with friends',
+      author: 'Sarah Chen',
+      authorAvatar: avatars.sarah,
+      timestamp: new Date('2025-11-20T18:30:00'),
+      likes: 45,
+      visibility: 'friends',
+      category: 'scenic',
+    },
+    votes: 45,
+    hasVoted: false,
+  },
+  {
+    id: 'fdc2',
+    photo: {
+      id: 'fdc-photo-2',
+      imageUrl: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=400',
+      lat: 40.7128,
+      lng: -74.0060,
+      location: 'New York City, NY',
+      caption: 'Sunset with the crew',
+      author: 'Mike Wilson',
+      authorAvatar: avatars.mike,
+      timestamp: new Date('2025-11-20T17:45:00'),
+      likes: 62,
+      visibility: 'friends',
+      category: 'urban',
+    },
+    votes: 62,
+    hasVoted: true,
+  },
+  {
+    id: 'fdc3',
+    photo: {
+      id: 'fdc-photo-3',
+      imageUrl: 'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=400',
+      lat: 34.0522,
+      lng: -118.2437,
+      location: 'Los Angeles, CA',
+      caption: 'Beach golden hour',
+      author: 'Emma Davis',
+      authorAvatar: avatars.emma,
+      timestamp: new Date('2025-11-20T18:00:00'),
+      likes: 38,
+      visibility: 'friends',
+      category: 'nature',
+    },
+    votes: 38,
+    hasVoted: false,
+  },
+  {
+    id: 'fdc4',
+    photo: {
+      id: 'fdc-photo-4',
+      imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400',
+      lat: 25.7617,
+      lng: -80.1918,
+      location: 'Miami Beach, FL',
+      caption: 'Friends at sunset',
+      author: 'James Lee',
+      authorAvatar: avatars.james,
+      timestamp: new Date('2025-11-20T18:15:00'),
+      likes: 52,
+      visibility: 'friends',
+      category: 'nature',
+    },
+    votes: 52,
+    hasVoted: false,
+  },
+];
+
 export const friendships = new Set([
   'Sarah Chen',
   'Mike Wilson',
@@ -877,11 +956,29 @@ export const canViewProfile = (username: string): boolean => {
   return profile.isPublic || isFriend(username);
 };
 
-export const getUserPhotos = (username: string): Photo[] => {
+export const getUserPhotos = (username: string, viewerUsername: string = 'You'): Photo[] => {
   if (username === 'You') {
     return mockPersonalPhotos;
   }
-  return mockFriendsPhotos.filter(p => p.author === username);
+  
+  // Get all photos by this user (from friends photos and global photos)
+  const allUserPhotos = [...mockFriendsPhotos, ...mockGlobalPhotos].filter(p => p.author === username);
+  
+  // Filter by visibility based on viewer's relationship
+  const isViewerFriend = viewerUsername === 'You' ? isFriend(username) : false;
+  
+  return allUserPhotos.filter(photo => {
+    // Public photos are visible to everyone
+    if (photo.visibility === 'public') {
+      return true;
+    }
+    // Friends photos are visible only if viewer is a friend
+    if (photo.visibility === 'friends') {
+      return isViewerFriend;
+    }
+    // Personal photos are never visible to others
+    return false;
+  });
 };
 
 export const updatePhotoVisibility = (photoId: string, newVisibility: 'personal' | 'friends' | 'public'): void => {
@@ -889,6 +986,37 @@ export const updatePhotoVisibility = (photoId: string, newVisibility: 'personal'
   if (photo) {
     photo.visibility = newVisibility;
   }
+};
+
+export interface UserStats {
+  photoCount: number;
+  places: number;
+  likes: number;
+  challengePoints: number;
+}
+
+export const getUserStats = (username: string, viewerUsername: string = 'You'): UserStats => {
+  const visiblePhotos = getUserPhotos(username, viewerUsername);
+  
+  // Calculate unique places
+  const uniquePlaces = new Set(visiblePhotos.map(p => `${p.lat},${p.lng}`));
+  
+  // Calculate total likes
+  const totalLikes = visiblePhotos.reduce((sum, photo) => sum + (photo.likes || 0), 0);
+  
+  // Calculate challenge points (from challenge submissions)
+  // For now, we'll use a simple calculation based on challenge wins
+  // In a real app, this would come from challenge data
+  const challengePoints = visiblePhotos
+    .filter(p => p.category === 'challenge' || p.category === 'uploaded')
+    .reduce((sum, photo) => sum + Math.floor((photo.likes || 0) / 10), 0);
+  
+  return {
+    photoCount: visiblePhotos.length,
+    places: uniquePlaces.size,
+    likes: totalLikes,
+    challengePoints: challengePoints,
+  };
 };
 
 export const getPersonalPhotosForTab = (tab: 'personal' | 'friends' | 'global'): Photo[] => {

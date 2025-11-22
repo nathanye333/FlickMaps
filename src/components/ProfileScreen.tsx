@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, FlatList } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { mockPersonalPhotos } from '../data/mockData';
+import { getUserPhotos, getUserStats, getUserProfile, canViewProfile } from '../data/mockData';
 import { Photo } from '../App';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ProfileScreenProps {
+  username?: string;
   onPhotoSelect?: (photo: Photo) => void;
   onViewOnMap?: () => void;
   onSettings?: () => void;
@@ -15,23 +16,43 @@ interface ProfileScreenProps {
   route?: any;
 }
 
-const stats = [
-  { icon: 'camera' as const, label: 'Photos', value: '47' },
-  { icon: 'location' as const, label: 'Places', value: '23' },
-  { icon: 'heart' as const, label: 'Likes', value: '342' },
-  { icon: 'trophy' as const, label: 'Challenge Points', value: '85' },
-];
-
-export function ProfileScreen({ onPhotoSelect, onViewOnMap, onSettings, navigation, route }: ProfileScreenProps) {
+export function ProfileScreen({ username: propsUsername, onPhotoSelect, onViewOnMap, onSettings, navigation, route }: ProfileScreenProps) {
   const nav = useNavigation();
+  const routeParams = useRoute();
   const insets = useSafeAreaInsets();
   const [showSettings, setShowSettings] = useState(false);
+  
+  // Get username from route params, props, or default to 'You'
+  const username = (routeParams.params as any)?.username || propsUsername || 'You';
+  const isOwnProfile = username === 'You';
+  const canView = isOwnProfile || canViewProfile(username);
+  const profile = getUserProfile(username);
+  
+  // Get photos filtered by visibility
+  const userPhotos = useMemo(() => {
+    if (!canView) return [];
+    return getUserPhotos(username, 'You');
+  }, [username, canView]);
+  
+  // Get stats
+  const stats = useMemo(() => {
+    if (!canView) return null;
+    return getUserStats(username, 'You');
+  }, [username, canView]);
+
+  // Helper function to serialize photo for navigation (convert Date to ISO string)
+  const serializePhotoForNavigation = (photo: Photo) => {
+    return {
+      ...photo,
+      timestamp: photo.timestamp.toISOString(),
+    };
+  };
 
   const handlePhotoPress = (photo: Photo) => {
     if (onPhotoSelect) {
       onPhotoSelect(photo);
     } else {
-      nav.navigate('PhotoDetails' as never, { photo } as never);
+      (nav as any).navigate('PhotoDetails', { photo: serializePhotoForNavigation(photo) });
     }
   };
 
@@ -73,111 +94,159 @@ export function ProfileScreen({ onPhotoSelect, onViewOnMap, onSettings, navigati
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerTextContainer}>
-            <Text style={styles.title}>Your Profile</Text>
-            <Text style={styles.subtitle}>Capturing moments, one pin at a time</Text>
+            <Text style={styles.title}>{isOwnProfile ? 'Your Profile' : `${username}'s Profile`}</Text>
+            <Text style={styles.subtitle}>
+              {isOwnProfile ? 'Capturing moments, one pin at a time' : 'View their photo collection'}
+            </Text>
           </View>
-          <Pressable 
-            style={styles.settingsButton}
-            onPress={() => {
-              if (onSettings) {
-                onSettings();
-              } else {
-                nav.navigate('Settings' as never);
-              }
-            }}
-          >
-            <Ionicons name="settings" size={20} color="#4b5563" />
-          </Pressable>
+          {isOwnProfile && (
+            <Pressable 
+              style={styles.settingsButton}
+              onPress={() => {
+                if (onSettings) {
+                  onSettings();
+                } else {
+                  nav.navigate('Settings' as never);
+                }
+              }}
+            >
+              <Ionicons name="settings" size={20} color="#4b5563" />
+            </Pressable>
+          )}
         </View>
 
         {/* Avatar */}
         <View style={styles.avatarSection}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>You</Text>
+            <Text style={styles.avatarText}>{username === 'You' ? 'You' : username[0]}</Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>Alex Johnson</Text>
-            <Text style={styles.userHandle}>@alexj</Text>
+            <Text style={styles.userName}>{username === 'You' ? 'Alex Johnson' : username}</Text>
+            <Text style={styles.userHandle}>{username === 'You' ? '@alexj' : `@${username.toLowerCase().replace(/\s+/g, '')}`}</Text>
           </View>
         </View>
 
         {/* Stats */}
-        <View style={styles.statsContainer}>
-          {stats.map((stat) => (
-            <View key={stat.label} style={styles.statItem}>
+        {stats && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
               <View style={styles.statIconContainer}>
-                <Ionicons name={stat.icon} size={20} color="#06b6d4" />
+                <Ionicons name="camera" size={20} color="#06b6d4" />
               </View>
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
+              <Text style={styles.statValue}>{stats.photoCount}</Text>
+              <Text style={styles.statLabel}>Photos</Text>
             </View>
-          ))}
-        </View>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="location" size={20} color="#06b6d4" />
+              </View>
+              <Text style={styles.statValue}>{stats.places}</Text>
+              <Text style={styles.statLabel}>Places</Text>
+            </View>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="heart" size={20} color="#06b6d4" />
+              </View>
+              <Text style={styles.statValue}>{stats.likes}</Text>
+              <Text style={styles.statLabel}>Likes</Text>
+            </View>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="trophy" size={20} color="#06b6d4" />
+              </View>
+              <Text style={styles.statValue}>{stats.challengePoints}</Text>
+              <Text style={styles.statLabel}>Challenge Points</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Photo Grid */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your Photos</Text>
-          <Pressable onPress={onViewOnMap}>
-            <Text style={styles.viewOnMapText}>View on Map</Text>
-          </Pressable>
-        </View>
-        
-        <FlatList
-          data={mockPersonalPhotos}
-          renderItem={renderPhoto}
-          numColumns={3}
-          scrollEnabled={false}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.photoGrid}
-        />
-      </View>
-
-      {/* Achievements Section */}
-      <View style={[styles.section, styles.achievementsSection]}>
-        <Text style={styles.sectionTitle}>Achievements</Text>
-        <View style={styles.achievementsList}>
-          <View style={[styles.achievementItem, styles.achievementOrange]}>
-            <View style={[styles.achievementIcon, styles.achievementIconOrange]}>
-              <Text style={styles.achievementEmoji}>🌅</Text>
-            </View>
-            <View style={styles.achievementContent}>
-              <Text style={styles.achievementTitle}>Golden Hour Master</Text>
-              <Text style={styles.achievementDescription}>Captured 10 photos during golden hour</Text>
-            </View>
+      {canView ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{isOwnProfile ? 'Your Photos' : `${username}'s Photos`}</Text>
+            {onViewOnMap && (
+              <Pressable onPress={onViewOnMap}>
+                <Text style={styles.viewOnMapText}>View on Map</Text>
+              </Pressable>
+            )}
           </View>
           
-          <View style={[styles.achievementItem, styles.achievementBlue]}>
-            <View style={[styles.achievementIcon, styles.achievementIconBlue]}>
-              <Text style={styles.achievementEmoji}>🗺️</Text>
+          {userPhotos.length > 0 ? (
+            <FlatList
+              data={userPhotos}
+              renderItem={renderPhoto}
+              numColumns={3}
+              scrollEnabled={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.photoGrid}
+            />
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="camera-outline" size={48} color="#d1d5db" />
+              <Text style={styles.emptyStateText}>No photos to display</Text>
             </View>
-            <View style={styles.achievementContent}>
-              <Text style={styles.achievementTitle}>Explorer</Text>
-              <Text style={styles.achievementDescription}>Visited 20+ unique locations</Text>
-            </View>
-          </View>
+          )}
         </View>
-      </View>
+      ) : (
+        <View style={styles.privateSection}>
+          <Ionicons name="lock-closed" size={64} color="#9ca3af" />
+          <Text style={styles.privateTitle}>Private Profile</Text>
+          <Text style={styles.privateMessage}>
+            {username}'s profile is private. Send a friend request to view their photos.
+          </Text>
+        </View>
+      )}
 
-      {/* Challenge Wins Section */}
-      <View style={[styles.section, styles.challengesSection]}>
-        <Text style={styles.sectionTitle}>Daily Challenge Wins</Text>
-        <View style={styles.challengesList}>
-          <View style={[styles.challengeItem, styles.challengeItemBorder]}>
-            <View style={styles.challengeIcon}>
-              <Ionicons name="trophy" size={24} color="white" />
-            </View>
-            <View style={styles.challengeContent}>
-              <Text style={styles.challengeTitle}>Best Sunset (Nov 18)</Text>
-              <Text style={styles.challengeDescription}>Won with 24 votes</Text>
-            </View>
-            <View style={styles.challengePoints}>
-              <Text style={styles.challengePointsText}>+25 pts</Text>
+      {/* Achievements Section - Only show for own profile */}
+      {isOwnProfile && (
+        <>
+          <View style={[styles.section, styles.achievementsSection]}>
+            <Text style={styles.sectionTitle}>Achievements</Text>
+            <View style={styles.achievementsList}>
+              <View style={[styles.achievementItem, styles.achievementOrange]}>
+                <View style={[styles.achievementIcon, styles.achievementIconOrange]}>
+                  <Text style={styles.achievementEmoji}>🌅</Text>
+                </View>
+                <View style={styles.achievementContent}>
+                  <Text style={styles.achievementTitle}>Golden Hour Master</Text>
+                  <Text style={styles.achievementDescription}>Captured 10 photos during golden hour</Text>
+                </View>
+              </View>
+              
+              <View style={[styles.achievementItem, styles.achievementBlue]}>
+                <View style={[styles.achievementIcon, styles.achievementIconBlue]}>
+                  <Text style={styles.achievementEmoji}>🗺️</Text>
+                </View>
+                <View style={styles.achievementContent}>
+                  <Text style={styles.achievementTitle}>Explorer</Text>
+                  <Text style={styles.achievementDescription}>Visited 20+ unique locations</Text>
+                </View>
+              </View>
             </View>
           </View>
-        </View>
-      </View>
+
+          {/* Challenge Wins Section */}
+          <View style={[styles.section, styles.challengesSection]}>
+            <Text style={styles.sectionTitle}>Daily Challenge Wins</Text>
+            <View style={styles.challengesList}>
+              <View style={[styles.challengeItem, styles.challengeItemBorder]}>
+                <View style={styles.challengeIcon}>
+                  <Ionicons name="trophy" size={24} color="white" />
+                </View>
+                <View style={styles.challengeContent}>
+                  <Text style={styles.challengeTitle}>Best Sunset (Nov 18)</Text>
+                  <Text style={styles.challengeDescription}>Won with 24 votes</Text>
+                </View>
+                <View style={styles.challengePoints}>
+                  <Text style={styles.challengePointsText}>+25 pts</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -448,5 +517,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ea580c',
     fontWeight: '600',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 12,
+  },
+  privateSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 48,
+    marginTop: 32,
+  },
+  privateTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  privateMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

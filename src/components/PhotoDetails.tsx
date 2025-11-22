@@ -20,11 +20,21 @@ interface PhotoDetailsProps {
   route?: any;
 }
 
+// Helper function to deserialize photo from navigation params (convert timestamp string back to Date)
+const deserializePhoto = (photoData: any): Photo | null => {
+  if (!photoData) return null;
+  return {
+    ...photoData,
+    timestamp: photoData.timestamp ? new Date(photoData.timestamp) : new Date(),
+  };
+};
+
 export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilityChange, navigation, route }: PhotoDetailsProps) {
   const nav = useNavigation();
   const routeParams = useRoute();
   const insets = useSafeAreaInsets();
-  const photo = (routeParams.params as any)?.photo || (route as any)?.params?.photo;
+  const photoData = (routeParams.params as any)?.photo || (route as any)?.params?.photo;
+  const photo = deserializePhoto(photoData);
   
   // Get context if available
   const context = React.useContext(AppContext);
@@ -39,13 +49,6 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
   
   const isOwnPhoto = photo?.author === 'You';
 
-  // Set selectedPhoto in context when component mounts or photo changes
-  useEffect(() => {
-    if (photo && context && context.setSelectedPhoto) {
-      context.setSelectedPhoto(photo);
-    }
-  }, [photo, context]);
-
   const handleClose = () => {
     if (onClose) {
       onClose();
@@ -53,6 +56,25 @@ export function PhotoDetails({ onClose, onViewOnMap, onProfileClick, onVisibilit
       nav.goBack();
     }
   };
+
+  // If no photo, show error or go back
+  if (!photo) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Photo not found</Text>
+        <Pressable onPress={handleClose}>
+          <Text>Go Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Set selectedPhoto in context when component mounts or photo changes
+  useEffect(() => {
+    if (photo && context && context.setSelectedPhoto) {
+      context.setSelectedPhoto(photo);
+    }
+  }, [photo, context]);
 
   const handleVisibilityChange = (newVisibility: 'personal' | 'friends' | 'public') => {
     setCurrentVisibility(newVisibility);

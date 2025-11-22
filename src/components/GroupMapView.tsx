@@ -176,6 +176,14 @@ export function GroupMapView(props: GroupMapViewProps) {
     });
   }, [groupPhotos, region.latitudeDelta, region.longitudeDelta, width, height]);
 
+  // Helper function to serialize photo for navigation (convert Date to ISO string)
+  const serializePhotoForNavigation = (photo: Photo) => {
+    return {
+      ...photo,
+      timestamp: photo.timestamp.toISOString(),
+    };
+  };
+
   const handlePhotoPress = (photo: Photo) => {
     // Find the group this photo belongs to
     const group = photoGroups.find(g => g.photos.some(p => p.id === photo.id));
@@ -186,7 +194,7 @@ export function GroupMapView(props: GroupMapViewProps) {
       } else if (props.onPhotoSelect) {
         props.onPhotoSelect(group.photos[0]);
       } else {
-        (navigation as any).navigate('PhotoDetails', { photo: group.photos[0] });
+        (navigation as any).navigate('PhotoDetails', { photo: serializePhotoForNavigation(group.photos[0]) });
       }
     }
   };
@@ -242,7 +250,7 @@ export function GroupMapView(props: GroupMapViewProps) {
             if (props.onPhotoSelect) {
               props.onPhotoSelect(photo);
             } else {
-              (navigation as any).navigate('PhotoDetails', { photo });
+              (navigation as any).navigate('PhotoDetails', { photo: serializePhotoForNavigation(photo) });
             }
           }}
         />

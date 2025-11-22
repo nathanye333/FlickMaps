@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getUserPhotos, canViewProfile, getUserProfile } from '../data/mockData';
+import { getUserPhotos, canViewProfile, getUserProfile, getUserStats, UserStats } from '../data/mockData';
 import { Photo } from '../App';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,8 +27,9 @@ export function UserMapScreen(props: UserMapScreenProps) {
   const username = (route.params as any)?.username || props.username || 'You';
   
   const canView = username === 'You' || canViewProfile(username);
-  const userPhotos = canView ? getUserPhotos(username) : [];
+  const userPhotos = canView ? getUserPhotos(username, 'You') : [];
   const profile = getUserProfile(username);
+  const stats: UserStats | null = canView ? getUserStats(username, 'You') : null;
 
   const handleBack = () => {
     if (props.onBack) {
@@ -158,6 +159,14 @@ export function UserMapScreen(props: UserMapScreenProps) {
     });
   }, [userPhotos, region.latitudeDelta, region.longitudeDelta, width, height]);
 
+  // Helper function to serialize photo for navigation (convert Date to ISO string)
+  const serializePhotoForNavigation = (photo: Photo) => {
+    return {
+      ...photo,
+      timestamp: photo.timestamp.toISOString(),
+    };
+  };
+
   const handlePhotoPress = (photo: Photo) => {
     // Find the group this photo belongs to
     const group = photoGroups.find(g => g.photos.some(p => p.id === photo.id));
@@ -168,7 +177,7 @@ export function UserMapScreen(props: UserMapScreenProps) {
       } else if (props.onPhotoSelect) {
         props.onPhotoSelect(group.photos[0]);
       } else {
-        (navigation as any).navigate('PhotoDetails', { photo: group.photos[0] });
+        (navigation as any).navigate('PhotoDetails', { photo: serializePhotoForNavigation(group.photos[0]) });
       }
     }
   };
@@ -204,8 +213,27 @@ export function UserMapScreen(props: UserMapScreenProps) {
           </Pressable>
 
           <View style={[styles.header, { top: insets.top + 16 }]}>
-            <Text style={styles.title}>{username}'s Map</Text>
-            <Text style={styles.subtitle}>{userPhotos.length} photos</Text>
+            <Text style={styles.title}>{username === 'You' ? 'Your Map' : `${username}'s Map`}</Text>
+            {stats && (
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Ionicons name="camera" size={14} color="#06b6d4" />
+                  <Text style={styles.statText}>{stats.photoCount}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Ionicons name="location" size={14} color="#06b6d4" />
+                  <Text style={styles.statText}>{stats.places}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Ionicons name="heart" size={14} color="#06b6d4" />
+                  <Text style={styles.statText}>{stats.likes}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Ionicons name="trophy" size={14} color="#06b6d4" />
+                  <Text style={styles.statText}>{stats.challengePoints}</Text>
+                </View>
+              </View>
+            )}
           </View>
         </>
       ) : (
@@ -236,7 +264,7 @@ export function UserMapScreen(props: UserMapScreenProps) {
             if (props.onPhotoSelect) {
               props.onPhotoSelect(photo);
             } else {
-              (navigation as any).navigate('PhotoDetails', { photo });
+              (navigation as any).navigate('PhotoDetails', { photo: serializePhotoForNavigation(photo) });
             }
           }}
         />
@@ -314,5 +342,21 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#111827',
   },
 });

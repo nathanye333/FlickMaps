@@ -2,13 +2,12 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Photo, MapTab } from '../App';
-import { mockPersonalPhotos, mockFriendsPhotos, mockGlobalPhotos, getPersonalPhotosForTab, mockDailyChallengeSubmissions } from '../data/mockData';
+import { mockPersonalPhotos, mockFriendsPhotos, mockGlobalPhotos, getPersonalPhotosForTab } from '../data/mockData';
 import { AppContext } from '../../App';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { TimelineScrubber } from './TimelineScrubber';
 import { PhotoStackModal } from './PhotoStackModal';
-import { DailyChallengeModal } from './DailyChallengeModal';
 import { PhotoUploadModal, UploadedPhoto } from './PhotoUploadModal';
 import { PhotoPin } from './PhotoPin';
 import MapViewComponent from 'react-native-maps';
@@ -90,7 +89,6 @@ export function MapView(props: MapViewProps) {
     longitudeDelta: 0.0421,
   });
   const [selectedStack, setSelectedStack] = useState<Photo[] | null>(null);
-  const [showDailyChallengeModal, setShowDailyChallengeModal] = useState(false);
   const [uploadedPhotos, setUploadedPhotos] = useState<Photo[]>([]);
   const [locationName, setLocationName] = useState('San Francisco, California, USA');
   const [isMapExpanded, setIsMapExpanded] = useState(false);
@@ -292,17 +290,24 @@ export function MapView(props: MapViewProps) {
         longitudeDelta: 0.01,
       };
       setRegion(newRegion);
-      // Set the appropriate tab based on photo visibility
+      // Set the appropriate tab based on photo visibility (programmatic change, not manual)
       if (selectedPhoto.visibility === 'personal') {
-        handleTabChange('personal');
+        handleTabChange('personal', false);
       } else if (selectedPhoto.visibility === 'friends') {
-        handleTabChange('friends');
+        handleTabChange('friends', false);
       } else if (selectedPhoto.visibility === 'public') {
-        handleTabChange('global');
+        handleTabChange('global', false);
       }
       // Center map on photo
       setTimeout(() => {
         mapRef.current?.animateToRegion(newRegion, 300);
+        // Clear selectedPhoto after animation completes to prevent tab from getting stuck
+        // Animation duration is 300ms, so clear after 400ms to ensure it's done
+        setTimeout(() => {
+          if (context?.setSelectedPhoto) {
+            context.setSelectedPhoto(null);
+          }
+        }, 400);
       }, 100);
     }
   }, [selectedPhoto]);
@@ -345,7 +350,11 @@ export function MapView(props: MapViewProps) {
     }
   };
 
-  const handleTabChange = (tab: MapTab) => {
+  const handleTabChange = (tab: MapTab, isManual: boolean = true) => {
+    // Clear selectedPhoto when user manually changes tabs to prevent it from resetting
+    if (isManual && context?.setSelectedPhoto && selectedPhoto) {
+      context.setSelectedPhoto(null);
+    }
     // Update both context and props if available
     if (setActiveMapTabContext) {
       setActiveMapTabContext(tab);
@@ -386,6 +395,11 @@ export function MapView(props: MapViewProps) {
   // Handle recentering to user's current location
   const handleRecenter = async () => {
     try {
+      // Clear selected photo to prevent tab from getting stuck
+      if (context?.setSelectedPhoto) {
+        context.setSelectedPhoto(null);
+      }
+      
       // Request location permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -484,6 +498,14 @@ export function MapView(props: MapViewProps) {
     setLocationName(getLocationName(region.latitude, region.longitude));
   }, [region]);
 
+  // Helper function to serialize photo for navigation (convert Date to ISO string)
+  const serializePhotoForNavigation = (photo: Photo) => {
+    return {
+      ...photo,
+      timestamp: photo.timestamp.toISOString(),
+    };
+  };
+
   const handleMarkerPress = (photo: Photo) => {
     const group = photoGroups.find(g => g.photos.some(p => p.id === photo.id));
     if (group) {
@@ -492,7 +514,7 @@ export function MapView(props: MapViewProps) {
       } else if (props.onPhotoSelect) {
         props.onPhotoSelect(group.photos[0]);
       } else {
-        (navigation as any)?.navigate?.('PhotoDetails', { photo: group.photos[0] });
+        (navigation as any)?.navigate?.('PhotoDetails', { photo: serializePhotoForNavigation(group.photos[0]) });
       }
     }
   };
@@ -670,48 +692,6 @@ export function MapView(props: MapViewProps) {
           </Pressable>
         </View>
 
-      {/* Daily Challenge Button - Friends Tab */}
-      {currentTab === 'friends' && !isMapExpanded && (
-        <Pressable
-          style={styles.dailyChallengeButton}
-          onPress={() => {
-            setShowDailyChallengeModal(true);
-            // Activate daily challenge when modal opens
-            if (context?.setIsDailyChallengeActive) {
-              context.setIsDailyChallengeActive(true);
-            }
-          }}
-        >
-          <View style={styles.dailyChallengeButtonInner}>
-            <Ionicons name="camera" size={24} color="white" />
-            <View style={styles.dailyChallengeBadge}>
-              <Text style={styles.dailyChallengeBadgeText}>!</Text>
-            </View>
-          </View>
-        </Pressable>
-      )}
-
-      {/* Daily Challenge Button - Global Tab */}
-      {currentTab === 'global' && !isMapExpanded && (
-        <Pressable
-          style={styles.dailyChallengeButton}
-          onPress={() => {
-            setShowDailyChallengeModal(true);
-            // Activate daily challenge when modal opens
-            if (context?.setIsDailyChallengeActive) {
-              context.setIsDailyChallengeActive(true);
-            }
-          }}
-        >
-          <View style={styles.dailyChallengeButtonInner}>
-            <Ionicons name="camera" size={24} color="white" />
-            <View style={styles.dailyChallengeBadge}>
-              <Text style={styles.dailyChallengeBadgeText}>!</Text>
-            </View>
-          </View>
-        </Pressable>
-      )}
-
       {/* Photo Stack Modal */}
       {selectedStack && (
         <PhotoStackModal
@@ -722,28 +702,9 @@ export function MapView(props: MapViewProps) {
             if (props.onPhotoSelect) {
               props.onPhotoSelect(photo);
             } else {
-              (navigation as any)?.navigate?.('PhotoDetails', { photo });
+              (navigation as any)?.navigate?.('PhotoDetails', { photo: serializePhotoForNavigation(photo) });
             }
           }}
-        />
-      )}
-
-      {/* Daily Challenge Modal */}
-      {showDailyChallengeModal && (
-        <DailyChallengeModal
-          onClose={() => {
-            setShowDailyChallengeModal(false);
-            // Keep daily challenge active even when modal closes - challenge is still live
-            // Don't deactivate here, only deactivate when user explicitly opts out
-          }}
-          submissions={mockDailyChallengeSubmissions}
-          onVote={(submissionId: string) => {
-            // Handle vote
-            console.log('Voted for submission:', submissionId);
-          }}
-          challengeTitle="Golden Hour Moments"
-          challengeDescription="Capture the perfect golden hour moment with warm, glowing light"
-          endsIn="in 4 hours"
         />
       )}
 
@@ -982,43 +943,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
-  },
-  dailyChallengeButton: {
-    position: 'absolute',
-    left: 16, // left-4 in original (16px)
-    top: 20, // top: 20px in original
-    zIndex: 40,
-  },
-  dailyChallengeButtonInner: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f97316', // Orange
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  dailyChallengeBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#06b6d4',
-    borderWidth: 2,
-    borderColor: 'white',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dailyChallengeBadgeText: {
-    fontSize: 10,
-    color: 'white',
-    fontWeight: 'bold',
   },
 });
 
